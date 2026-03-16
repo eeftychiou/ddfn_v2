@@ -321,12 +321,16 @@ class TrajectorySolver:
             if _bbox_overlap(traj_bbox, s_bbox):
                 candidate_sectors.append((sid, sgeo))
 
+        # candidate_sectors matches logic
+
         for i in range(len(waypoints) - 1):
             p1 = waypoints[i]
             p2 = waypoints[i + 1]
             dist_nm = _haversine_nm(p1[0], p1[1], p2[0], p2[1])
             leg_duration_s = (dist_nm / tas_kt) * 3600.0 if tas_kt > 0 else 0.0
             
+            # leg processing
+
             alt1 = altitudes[i] if altitudes and i < len(altitudes) else None
             alt2 = altitudes[i+1] if altitudes and i+1 < len(altitudes) else None
 

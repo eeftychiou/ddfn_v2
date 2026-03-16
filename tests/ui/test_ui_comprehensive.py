@@ -69,11 +69,13 @@ def run_ui_tests():
         
     print("FMP Dashboard is up. Starting flights and Sim Manager...")
     processes.append(start_process("ddfn_v2.services.airport_service", "Airport/LGAT", ["LGAT", "--aixm", aixm_path]))
+    processes.append(start_process("ddfn_v2.services.airport_service", "Airport/LCLK", ["LCLK", "--aixm", aixm_path]))
     processes.append(start_process("ddfn_v2.services.aoc_service", "AOC/AEW", ["AEW"]))
+    processes.append(start_process("ddfn_v2.services.aoc_service", "AOC/CYP", ["CYP"]))
     processes.append(start_process("ddfn_v2.services.sim_manager", "Sim Manager"))
     
     # Let flights populate
-    time.sleep(15)
+    time.sleep(20)
     
     print("Launching Playwright to run UI tests...")
     

@@ -74,6 +74,7 @@ This document describes the Decentralized Demand & Capacity Balancing (DDFN) pro
   - Emits `DISTRIBUTED_FLOW_CONSENSUS` when establishing slots (CTOTs) for arriving traffic.
   - Supports **Dynamic Re-sectorization**: Processes `MERGE_SECTORS` commands to combine multiple physical sectors into virtual operational units while preserving historic state.
   - Supports **Tactical RAD Management**: Processes `RAD_RULE_UPDATE` to activate/deactivate route restrictions in real-time.
+  - **Flight Re-processing**: Implements `_reprocess_all_flights` to re-trigger route calculations whenever the AIXM configuration is updated, resolving potential race conditions.
 - **User Interface**: Each FMP serves its own isolated UI dashboard. Initial setup is achieved through the **Airspace Config** tab.
 
 ### 3.3. Airport Nodes (`airport_service.py`)
@@ -151,7 +152,7 @@ Core data structures used across the system. All models are implemented using **
 The `TrajectorySolver` now supports dependency injection for sector databases and performs a bounding box overlap check before running expensive ray-casting intersections. Added support for tracking `rad_violation` flags on the `FlightTrajectory` model for enhanced edge-based validation.
 
 ### [Data Normalization]
-Normalized identifier names to `ident` across the system (specifically in `app.js`, `airspace.py`, and `aixm_tool.py`) to align with ICAO terminology and backend Pydantic models, replacing legacy `id` fields for airports and waypoints.
+Normalized identifier names to `ident` across the system (specifically in `app.js`, `airspace.py`, and `aixm_tool.py`) and `.sector_id` for sectors, aligning with ICAO terminology and backend Pydantic models.
 
 ## 8. Glossary / Acronyms
 

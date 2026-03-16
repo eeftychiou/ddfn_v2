@@ -146,6 +146,13 @@ def load_from_aixm(file_path: str):
 
     # 5. Finalize setup
     derive_airport_sector_mapping()
+    
+    if WAYPOINTS:
+        first_wpt = next(iter(WAYPOINTS.values()))
+        print(f"DEBUG: Loaded {len(WAYPOINTS)} waypoints. Sample: {first_wpt.ident} {first_wpt.type}")
+    if SECTORS:
+        first_sec = next(iter(SECTORS.values()))
+        print(f"DEBUG: Loaded {len(SECTORS)} sectors. Sample: {first_sec.sector_id} in FIR {first_sec.fir}")
         
     print(f"Loaded {len(aixm_sectors)} sectors, {len(aixm_waypoints)} waypoints, {len(aixm_airports)} airports, and {len(aixm_routes)} route segments from {file_path}")
 

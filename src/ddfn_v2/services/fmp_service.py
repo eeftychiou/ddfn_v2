@@ -349,6 +349,21 @@ class FMPNode(DDFN_Node):
 
             await asyncio.sleep(3.0)
 
+    async def _reprocess_all_flights(self):
+        """Re-evaluates trajectories for all flights in FDPS (e.g. after AIXM load)."""
+        async with self._state_lock:
+            count = 0
+            for fid in list(self.fdps.flights.keys()):
+                old_flt = self.fdps.flights[fid]
+                new_flt = FlightTrajectory.from_flight_plan(
+                    old_flt.flight_id, old_flt.origin, old_flt.destination, 
+                    old_flt.departure_time, old_flt.cruise_fl, old_flt.route_string,
+                    waypoint_db=self.waypoint_db
+                )
+                self.fdps.add_flight(new_flt)
+                count += 1
+            self.logger.info(f"Reprocessed {count} flights after configuration update.")
+
     async def _broadcast_inventory(self):
         """Periodically broadcast the list of flights in this FIR's FDPS."""
         while True:
@@ -359,17 +374,26 @@ class FMPNode(DDFN_Node):
                 # Local sectors for this node
                 local_sector_ids = {s.sector_id for s in self.sectors}
                 
+                if not local_sector_ids and self.is_configured:
+                    self.logger.warning(f"Node is configured but has NO local sectors! State: {len(self.sectors)} sectors.")
+
+                # self.logger.info(f"DEBUG: Broadcasting inventory. Local sectors: {len(local_sector_ids)}. Flights in FDPS: {len(self.fdps.flights)}")
+
                 for fid, flt in self.fdps.flights.items():
                     # Find first and last sector belonging to this FIR
                     local_entries = [e for e in flt.route if e.sector_id in local_sector_ids]
                     
                     if not local_entries:
+                        # if len(flt.route) > 0:
+                        #    self.logger.info(f"Flight {fid} has {len(flt.route)} sectors but NONE in {local_sector_ids}")
                         continue # Not relevant for this node anymore?
                         
                     entry_seg = local_entries[0]
                     exit_seg = local_entries[-1]
                     
                     eta_entry = entry_seg.estimated_time_over
+                    self.logger.info(f"DEBUG: Flight {fid} is LOCAL. Entry: {entry_seg.sector_id} at {eta_entry}")
+
                     
                     # Determine when the flight exits this node's FIR
                     idx = flt.route.index(exit_seg)
@@ -1023,6 +1047,9 @@ async def main():
                 node.is_configured = True
                 node.save_local_config(config_name=config_name)
                 
+            # 3. Reprocess any flights received during unconfigured state
+            await node._reprocess_all_flights()
+            
             return {"status": "success", "message": f"Node configured for {fir_id} with {len(node.sectors)} sectors as '{config_name}'"}
         except Exception as e:
             node.logger.error(f"Setup failure: {e}")
