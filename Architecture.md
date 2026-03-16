@@ -150,6 +150,9 @@ Core data structures used across the system. All models are implemented using **
 ### [trajectories.py](file:///c:/Users/eftyc/Antigravity/ddfn_v2/src/ddfn_v2/eng/trajectories.py)
 The `TrajectorySolver` now supports dependency injection for sector databases and performs a bounding box overlap check before running expensive ray-casting intersections. Added support for tracking `rad_violation` flags on the `FlightTrajectory` model for enhanced edge-based validation.
 
+### [Data Normalization]
+Normalized identifier names to `ident` across the system (specifically in `app.js`, `airspace.py`, and `aixm_tool.py`) to align with ICAO terminology and backend Pydantic models, replacing legacy `id` fields for airports and waypoints.
+
 ## 8. Glossary / Acronyms
 
 - **AAR**: Arrival Acceptance Rate

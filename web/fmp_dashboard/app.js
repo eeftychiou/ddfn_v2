@@ -1116,7 +1116,7 @@ async function loadExtraLayers() {
                         iconAnchor: [6, 6]
                     });
                     const marker = L.marker([adp.lat, adp.lon], { icon: icon });
-                    marker.bindTooltip(`Airport: ${adp.id} (${adp.name})`, {
+                    marker.bindTooltip(`Airport: ${adp.ident} (${adp.name})`, {
                         permanent: document.getElementById('toggle-labels-wpt')?.checked, // Latest state
                         direction: 'right',
                         className: 'map-label',
@@ -1147,7 +1147,7 @@ async function loadExtraLayers() {
                         iconAnchor: [5, 5]
                     });
                     const marker = L.marker([wpt.lat, wpt.lon], { icon: icon });
-                    marker.bindTooltip(`${wpt.id}`, {
+                    marker.bindTooltip(`${wpt.ident}`, {
                         permanent: document.getElementById('toggle-labels-wpt')?.checked, // Latest state
                         direction: 'right',
                         className: 'map-label',
