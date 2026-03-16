@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDFN V2 | Advanced FMP Terminal</title>
+    <link rel="stylesheet" href="style.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Injected by the backend Uvicorn server to hard-bind this GUI instance to the serving Node
+        window.ACTIVE_NODE_ID = null;
+    </script>
+</head>
+
+<body>
+    <div class="dashboard">
+        <header class="glass-header">
+            <div class="header-branding">
+                <h1>Advanced Flow Management Position (FMP)</h1>
+                <span class="subtitle">DDFN Prototype V2</span>
+            </div>
+
+            <nav class="tab-nav">
+                <button class="tab-btn active" data-target="tab-overview">Overview</button>
+                <button class="tab-btn" data-target="tab-flow">Flow Management</button>
+                <button class="tab-btn" data-target="tab-airspace">Airspace & Slots</button>
+                <button class="tab-btn" data-target="tab-config">Airspace Config</button>
+                <button class="tab-btn" data-target="tab-rad">RAD Management</button>
+            </nav>
+
+            <div class="controls">
+                <div id="utc-clock" class="clock-display">00:00:00 UTC</div>
+                <div id="config-name-display" class="badge" style="background: rgba(88, 166, 255, 0.2); color: #58a6ff;">Config: Default</div>
+                <div id="active-node-badge" class="badge">Node: Unknown</div>
+                <button id="btn-settings" class="icon-btn">⚙️</button>
+                <div class="status-indicator">
+                    <span class="dot green"></span> Connected to SWIM
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard-content">
+            <!-- TAB 1: OVERVIEW -->
+            <div id="tab-overview" class="tab-pane active">
+                <div class="overview-grid">
+                    <!-- Top: Map/Sector Status -->
+                    <section class="glass-panel grid-map">
+                        <h2>Sector Map Overview</h2>
+                        <div id="nodes-container" class="nodes-container">
+                            <!-- Injected dynamically via JS based on Workspace Settings -->
+                        </div>
+                    </section>
+
+                    <!-- Bottom: Live Event Log -->
+                    <section class="glass-panel grid-log">
+                        <h2>SWIM Event Bus Feed</h2>
+                        <div id="log-container" class="log-container">
+                            <div class="log-entry system"><span class="log-text">Initializing Advanced
+                                    Terminal...</span></div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- TAB 2: FLOW MANAGEMENT -->
+            <div id="tab-flow" class="tab-pane">
+                <div class="flow-grid">
+                    <!-- Left/Top: Constraint Builder & Chart -->
+                    <section class="glass-panel grid-builder">
+                        <h2>Constraint Builder & Prediction</h2>
+                        <div class="constraint-header"
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h3 style="font-size: 0.9rem; color: #8b949e; margin: 0;">Active Constraints</h3>
+                            <button id="btn-open-constraint-modal" class="primary-btn"
+                                style="padding: 4px 8px; font-size: 0.8rem;">+ Add Constraint</button>
+                        </div>
+
+                        <!-- Active Constraints Table -->
+                        <div class="active-constraints-container" style="margin-bottom: 20px;">
+                            <table class="inventory-table" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Start Time (UTC)</th>
+                                        <th>End Time (UTC)</th>
+                                        <th>Capacity</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="active-constraints-body">
+                                    <!-- Populated via JS -->
+                                    <tr>
+                                        <td colspan="4" style="text-align:center; color:var(--text-sec); padding:10px;">
+                                            No constraints active</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Chart Controls -->
+                        <div class="graph-controls"
+                            style="display: flex; gap: 15px; margin-bottom: 10px; align-items: center;">
+                            <div class="input-group" style="margin: 0; flex: 1;">
+                                <label style="font-size: 0.8rem;">Time Scope</label>
+                                <select id="chart-time-scope" class="dropdown" style="padding: 4px;">
+                                    <option value="2">2 Hours</option>
+                                    <option value="4" selected>4 Hours</option>
+                                    <option value="8">8 Hours</option>
+                                    <option value="24">24 Hours</option>
+                                </select>
+                            </div>
+                            <div class="input-group" style="margin: 0; flex: 2;">
+                                <label style="font-size: 0.8rem; display: flex; justify-content: space-between;">
+                                    <span>Pan Timeline</span>
+                                    <span id="chart-pan-label">Now</span>
+                                </label>
+                                <input type="range" id="chart-pan-slider" min="-12" max="12" value="0" step="1"
+                                    style="width: 100%;">
+                            </div>
+                        </div>
+
+                        <!-- Demand Graph -->
+                        <div class="chart-container" style="height: 300px; position: relative;">
+                            <canvas id="demandChart"></canvas>
+                        </div>
+
+                    </section>
+
+                    <!-- Right/Bottom: Negotiation Inbox (HITL) -->
+                    <section class="glass-panel grid-inbox">
+                        <h2>Negotiation Inbox (Action Required)</h2>
+                        <div id="inbox-container" class="inbox-container">
+                            <div class="empty-state">No pending proposals awaiting your approval.</div>
+                        </div>
+
+                        <!-- Bin Deep-Dive Panel (Moved here) -->
+                        <div id="flight-deep-dive" class="deep-dive-panel"
+                            style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--glass-border); display: none; flex: 1; overflow: hidden;">
+                            <h2 style="margin: 0 0 15px 0; font-size: 1rem; color: var(--accent);">Demand Detail: <span
+                                    id="deep-dive-time"></span></h2>
+                            <div class="slots-table-wrapper" style="max-height: 400px;">
+                                <table class="inventory-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Flight ID</th>
+                                            <th>Origin/Dest</th>
+                                            <th>Routing</th>
+                                        </tr>
+                                    </thead>
+
+                            </table>
+                        </div>
+                    </section><!-- /grid-inbox -->
+                </div><!-- /flow-grid -->
+            </div><!-- /tab-flow -->
+
+            <!-- TAB 3: AIRSPACE & SLOTS -->
+            <div id="tab-airspace" class="tab-pane">
+                <div class="airspace-grid">
+                    <!-- Left: Airspace Inventory (NEW) -->
+                    <section class="glass-panel grid-inventory">
+                        <div class="panel-header">
+                            <h2>Airspace Inventory <span class="badge">Live FIR</span></h2>
+                            <div class="inventory-filters">
+                                <span id="inventory-count">Tracking: 0 flights</span>
+                            </div>
+                        </div>
+                        <div class="slots-table-wrapper">
+                            <table class="inventory-table">
+                                <thead>
+                                    <tr>
+                                        <th>Flight ID</th>
+                                        <th>Fix/In</th>
+                                        <th>ETA/In</th>
+                                        <th>Fix/Out</th>
+                                        <th>ETA/Out</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inventory-list-body">
+                                    <!-- Injected via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Right: Slot Management (CFMU Mirror) -->
+                    <section class="glass-panel grid-slots">
+                        <div class="panel-header">
+                            <h2>Slot Management <span class="badge">CFMU Parity</span></h2>
+                            <button id="swap-slots-btn" class="primary-btn" disabled>Swap Selected</button>
+                        </div>
+                        <div class="slots-table-wrapper">
+                            <table class="slot-table">
+                                <thead>
+                                    <tr>
+                                        <th>Flight ID</th>
+                                        <th>Schedule (ETOT)</th>
+                                        <th>Calculated (CTOT)</th>
+                                        <th>Delay</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="slot-list-body">
+                                    <!-- Injected via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- TAB 4: AIRSPACE CONFIGURATION -->
+            <div id="tab-config" class="tab-pane">
+                <div class="config-grid">
+                    <section class="glass-panel config-controls">
+                        <h2>Airspace Configuration</h2>
+                        <div class="input-group">
+                            <label>Upload AIXM File</label>
+                            <input type="file" id="config-aixm-upload" accept=".xml,.zip" style="width: 100%; margin-bottom: 10px;">
+                        </div>
+                        <div style="text-align: center; color: var(--text-sec); font-size: 0.8rem; margin: 10px 0;">- OR -</div>
+                        <div class="input-group">
+                            <label>AIXM Server Path</label>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="text" id="config-aixm-path" placeholder="AIXM/BD_2025-09-30_400005921419525.xml" style="flex:1;">
+                                <button id="btn-load-aixm" class="secondary-btn" style="margin:0;">Load</button>
+                            </div>
+                        </div>
+
+                        <div class="input-group" style="margin-top: 15px;">
+                            <label>Current Node Responsibility</label>
+                            <div id="active-responsibility-list" style="max-height: 120px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 4px; padding: 5px; font-size: 0.75rem; border: 1px dashed var(--glass-border); color: var(--accent);">
+                                <div style="text-align:center; color: var(--text-sec); padding: 5px;">No active responsibility.</div>
+                            </div>
+                        </div>
+
+                        <div class="input-group" style="margin-top: 15px;">
+                            <label>Select FIR (Available Space)</label>
+                            <select id="config-fir-select" class="dropdown">
+                                <option value="">Load AIXM first...</option>
+                            </select>
+                        </div>
+
+                        <div id="config-sector-picker" style="margin-top: 20px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <label>Available Sectors</label>
+                                <button id="btn-select-all-sectors" class="btn-secondary" style="font-size: 0.7rem; padding: 2px 6px; margin: 0;">Select All</button>
+                            </div>
+                            <div id="config-sector-list" class="checkbox-grid" style="overflow-y: auto; flex: 1; padding: 5px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                                <!-- Sectors injected here -->
+                            </div>
+                        </div>
+
+                        <div class="input-group" style="margin-top: 15px;">
+                            <label>Sliding Measurement Window</label>
+                            <select id="config-window-size" class="dropdown">
+                                <option value="5">5 Minutes</option>
+                                <option value="15">15 Minutes</option>
+                                <option value="30">30 Minutes</option>
+                                <option value="45">45 Minutes</option>
+                                <option value="60" selected>1 Hour (Default)</option>
+                                <option value="90">1.5 Hours</option>
+                                <option value="120">2 Hours</option>
+                            </select>
+                        </div>
+
+                        <div class="input-group" style="margin-top: 15px;">
+                            <label>Node Configuration Name</label>
+                            <input type="text" id="config-node-name" placeholder="E.g. LCCC_Upper_West" style="width: 100%;">
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button id="btn-save-airspace-config" class="primary-btn" style="flex: 2; margin: 0;">Save & Apply Config</button>
+                            <button id="btn-delete-airspace-config" class="secondary-btn" style="flex: 1; margin: 0; color: var(--danger); border-color: var(--danger);">Delete</button>
+                        </div>
+                        <div id="config-save-status" style="margin-top: 10px; font-size: 0.85rem; text-align: center;"></div>
+
+                        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--glass-border);">
+                            <label style="font-size: 0.8rem; color: var(--text-sec);">Load Saved Configuration</label>
+                            <select id="config-saved-list" class="dropdown" style="width: 100%; margin-top: 5px;">
+                                <option value="">-- No saved configs --</option>
+                            </select>
+                        </div>
+                    </section>
+
+                    <section class="glass-panel config-map">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h2>Airspace Visualization</h2>
+                            <div class="map-toggles" style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.75rem; color: var(--text-sec);">
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="toggle-airports"> Airports
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="toggle-waypoints"> Waypoints
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="toggle-airways"> Airways
+                                </label>
+                                <div style="width: 1px; height: 15px; background: var(--glass-border); margin: 0 5px;"></div>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="toggle-labels-wpt"> Fix Labels
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="toggle-labels-rte"> Route Labels
+                                </label>
+                            </div>
+                        </div>
+                        <div id="airspace-map" style="flex: 1; border-radius: 8px; border: 1px solid var(--glass-border); overflow: hidden;">
+                            <!-- Leaflet map -->
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- TAB 5: RAD MANAGEMENT -->
+            <div id="tab-rad" class="tab-pane">
+                <div class="glass-panel" style="flex: 1;">
+                    <div class="panel-header">
+                        <h2>Route Availability Document (RAD) Rules</h2>
+                        <button id="btn-refresh-rad" class="secondary-btn" style="padding: 4px 12px; font-size: 0.8rem;">Refresh Rules</button>
+                    </div>
+                    <div class="slots-table-wrapper" style="margin-top: 10px;">
+                        <table class="inventory-table">
+                            <thead>
+                                <tr>
+                                    <th>Rule ID</th>
+                                    <th>Description</th>
+                                    <th>Waypoint</th>
+                                    <th>Constraints</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rad-rules-body">
+                                <!-- Populated via JS -->
+                                <tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-sec);">Loading RAD rules...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Workspace Settings Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h2>CHMI Workspace Settings</h2>
+                <button id="btn-close-settings" class="icon-btn">&times;</button>
+            </div>
+
+            <div class="settings-section" style="padding: 10px 0;">
+                <h3 style="color:var(--text-main); font-size:1rem; margin-bottom:5px;">Capacity Measurement Interval
+                </h3>
+                <p style="color:var(--text-sec); font-size:0.85rem; margin-bottom:10px;">Select the sliding window
+                    duration for predicting sector entry demand.</p>
+                <select id="measurement-window-select" class="dropdown" style="width:100%;">
+                    <option value="5">5 Minutes</option>
+                    <option value="15">15 Minutes</option>
+                    <option value="30">30 Minutes</option>
+                    <option value="60" selected>60 Minutes</option>
+                </select>
+            </div>
+
+            <div class="settings-section"
+                style="margin-top:20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                <h3 style="color:var(--text-main); font-size:1rem; margin-bottom:5px;">Active Traffic Volumes</h3>
+                <p style="color:var(--text-sec); font-size:0.85rem; margin-bottom:10px;">Select the baseline or virtual
+                    sectors you wish to monitor in this workspace.</p>
+                <div id="workspace-checkboxes" class="checkbox-grid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <div class="settings-section"
+                style="margin-top:20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                <h3 style="color:var(--text-main); font-size:1rem; margin-bottom:5px;">Sector Management</h3>
+                <p style="color:var(--text-sec); font-size:0.85rem; margin-bottom:10px;">Merge two or more selected
+                    Traffic Volumes into a single Virtual Sector.</p>
+                <div class="input-group" style="display:flex; gap:10px;">
+                    <input type="text" id="merge-sector-id" placeholder="New Virtual ID (e.g. LFFF-AB)"
+                        class="input-field" style="flex:1;">
+                    <button id="btn-merge-sectors" class="btn-secondary" style="margin-top:0;">Create Virtual
+                        Sector</button>
+                </div>
+            </div>
+
+            <div class="settings-section"
+                style="margin-top:20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                <h3 style="color:var(--text-main); font-size:1rem; margin-bottom:5px;">Airspace Configurations</h3>
+                <p style="color:var(--text-sec); font-size:0.85rem; margin-bottom:10px;">Select a predefined sector
+                    strategy. This will reset and reload the dashboard.</p>
+                <div class="input-group" style="display:flex; gap:10px;">
+                    <select id="config-select" class="dropdown" style="flex:1;">
+                        <option value="">Loading...</option>
+                    </select>
+                    <button id="btn-apply-config" class="btn-secondary" style="margin-top:0;">Apply</button>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btn-save-settings" class="primary-btn">Save Workspace</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Constraint Builder Modal -->
+    <div id="constraint-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content glass-panel" style="max-width: 420px; position: relative;">
+                <button id="btn-close-modal" class="close-btn"
+                    style="position: absolute; top: 10px; right: 15px; background: none; border: none; color: var(--text-sec); font-size: 1.4rem; cursor: pointer; line-height: 1;">&times;</button>
+                <h2
+                    style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; font-size: 1rem;">
+                    Inject Constraint</h2>
+                <div class="builder-forms" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="input-group">
+                        <label>Target Sector</label>
+                        <select id="builder-sector" class="dropdown">
+                            <!-- Injected dynamically -->
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Restricted Capacity (flights/hr)</label>
+                        <input type="number" id="builder-capacity" value="30">
+                    </div>
+                    <div class="input-group">
+                        <label>Time Window</label>
+                        <div class="time-inputs" style="display: flex; gap: 10px; align-items: center;">
+                            <input type="time" id="builder-start" value="16:00">
+                            <span>to</span>
+                            <input type="time" id="builder-end" value="18:00">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Reason Code</label>
+                        <select id="builder-reason" class="dropdown">
+                            <option value="WEATHER">Weather (WX)</option>
+                            <option value="ATC_CAPACITY">ATC Capacity (TC)</option>
+                            <option value="EQUIPMENT">Equipment (EQ)</option>
+                            <option value="STAFFING">Staffing (ST)</option>
+                            <option value="OTHER" selected>Other (OT)</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 5px;">
+                        <button id="btn-apply-constraint" class="primary-btn" style="flex: 1;">Apply Constraint</button>
+                        <button id="btn-reset-capacity" class="secondary-btn" style="flex: 1;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Setup Wizard Modal (First Launch) -->
+    <div id="setup-wizard-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel" style="width: 500px;">
+            <div class="modal-header">
+                <h2>FMP Node Initialization</h2>
+            </div>
+            <div class="settings-section">
+                <p style="color:var(--text-sec); font-size:0.9rem; margin-bottom:20px;">
+                    Welcome to the DDFN Advanced FMP Terminal. This node is currently unconfigured. 
+                    Please define the baseline parameters to join the network.
+                </p>
+                
+                <div class="input-group">
+                    <label>AIXM 5.1 Source File</label>
+                    <input type="text" id="setup-aixm-path" value="AIXM/BD_2025-09-30_400005921419525.xml" placeholder="Path to AIXM XML">
+                </div>
+
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>Assigned FIR (Center of Operations)</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="setup-fir-id" placeholder="e.g. LFFF, EDDD" style="flex:1;">
+                        <button id="btn-fetch-firs" class="secondary-btn" style="margin:0;">Check File</button>
+                    </div>
+                </div>
+
+                <div id="setup-fir-list-container" class="input-group" style="margin-top: 10px; display: none;">
+                    <label>Select from detected FIRs</label>
+                    <select id="setup-fir-dropdown" class="dropdown"></select>
+                </div>
+
+                <div class="input-group" style="margin-top: 15px;">
+                    <label>Flow Capacity Window (Minutes)</label>
+                    <select id="setup-window-size" class="dropdown">
+                        <option value="60">1 Hour</option>
+                        <option value="120" selected>2 Hours (Standard)</option>
+                        <option value="240">4 Hours</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="margin-top: 30px;">
+                <button id="btn-initialize-node" class="primary-btn" style="width: 100%;">Initialize Node & Load Airspace</button>
+            </div>
+            <div id="setup-status-msg" style="margin-top: 10px; font-size: 0.85rem; text-align: center; color: var(--warning);"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

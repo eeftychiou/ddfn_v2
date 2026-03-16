@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SWIM Central Broker Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Re-use main styling from the dashboard */
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(180deg, #161b22, #0d1117);
+            padding: 15px 30px;
+            border-bottom: 2px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { margin: 0; font-size: 20px; color: #58a6ff; }
+        .header-badges { display: flex; gap: 15px; }
+        .badge { background: #21262d; border: 1px solid #30363d; padding: 5px 15px; border-radius: 12px; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+        .status-dot { width: 10px; height: 10px; background-color: #3fb950; border-radius: 50%; box-shadow: 0 0 8px rgba(63, 185, 80, 0.6); }
+        .main-container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            padding: 20px;
+            overflow: hidden;
+        }
+        .panel {
+            background: linear-gradient(145deg, #161b22, #0d1117);
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        }
+        .panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8b949e;
+        }
+        #nodes-panel { width: 300px; }
+        #audit-panel { flex: 1; }
+        
+        .node-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        .node-card { background: #0d1117; border: 1px solid #30363d; padding: 12px; border-radius: 8px; font-weight: 600; color: #58a6ff; display: flex; align-items: center; gap:10px; transition: transform 0.2s; }
+        .node-card:hover { transform: translateX(5px); border-color: #58a6ff; }
+        .node-card.air { color: #f2cc60; border-color: #30363d; }
+        
+        .audit-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+        .audit-row { background: #0d1117; display: flex; align-items: center; padding: 8px 12px; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 12px; border-left: 3px solid #30363d; gap: 15px; }
+        .audit-row:hover { background: #161b22; }
+        .audit-row .time { color: #8b949e; min-width: 80px; }
+        .audit-row .source { color: #ff7b72; font-weight: bold; min-width: 140px; }
+        .audit-row .type { color: #a5d6ff; min-width: 250px; }
+        .audit-row .payload { color: #c9d1d9; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        .audit-row.highlight-cap { border-left-color: #d29922; }
+        .audit-row.highlight-ctot { border-left-color: #f85149; }
+        .audit-row.highlight-handover { border-left-color: #3fb950; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>DDFN SWIM Central Broker</h1>
+            <div style="font-size: 12px; color: #8b949e; margin-top: 5px;">System-Wide Information Management Monitor</div>
+        </div>
+        <div class="header-badges">
+            <div class="badge"><div class="status-dot"></div> Active Nodes: <span id="node-count">0</span></div>
+        </div>
+    </div>
+    
+    <div class="main-container">
+        <div class="panel" id="nodes-panel">
+            <h2>Connected Peers (Live)</h2>
+            <div class="node-list" id="connected-nodes-list"></div>
+        </div>
+        
+        <div class="panel" id="audit-panel">
+            <h2>SWIM Live Log Stream</h2>
+            <div class="audit-list" id="audit-log-list"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+import asyncio
+import json
+import logging
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from typing import Dict, List, Any
+
+from ddfn_v2.core.audit import SWIMAuditLog
+
+# Configure brief logging
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - Broker - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("Broker")
+
+auditor = SWIMAuditLog("logs/swim_audit.db")
+
+app = FastAPI(title="DDFN SWIM Message Broker")
+
+# topic -> list of websockets
+subscribers: Dict[str, List[WebSocket]] = {}
+active_nodes: Dict[WebSocket, str] = {}
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    client_subscriptions = []
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                payload = json.loads(data)
+                action = payload.get("action")
+                
+                if action == "hello":
+                    node_id = payload.get("node_id")
+                    if node_id:
+                        # Check if node_id already exists from a DIFFERENT websocket
+                        is_taken = False
+                        for ws, existing_id in active_nodes.items():
+                            if existing_id == node_id and ws != websocket:
+                                is_taken = True
+                                break
+                        
+                        if is_taken:
+                            logger.warning(f"Registration rejected for '{node_id}': ID already in use.")
+                            await websocket.send_json({"error": "node_id_taken", "node_id": node_id})
+                            return # Terminate this connection
+                                
+                        active_nodes[websocket] = node_id
+                        logger.info(f"Node '{node_id}' formally registered.")
+                        await websocket.send_json({"status": "registered", "node_id": node_id})
+                        
+                elif action == "subscribe":
+                    topic = payload.get("topic")
+                    if topic not in subscribers:
+                        subscribers[topic] = []
+                    if websocket not in subscribers[topic]:
+                        subscribers[topic].append(websocket)
+                        client_subscriptions.append(topic)
+                    logger.debug(f"Client subscribed to {topic}")
+                    
+                elif action == "publish":
+                    topic = payload.get("topic")
+                    message = payload.get("message")
+                    
+                    # Log to persistent audit storage (now non-blocking)
+                    if isinstance(message, dict):
+                        auditor.log_event(topic, message)
+                        
+                    if topic in subscribers:
+                        # Broadcast concurrently
+                        async def send_to_ws(ws, t, m):
+                            try:
+                                await ws.send_json({"topic": t, "message": m})
+                            except Exception:
+                                pass
+
+                        tasks = [asyncio.create_task(send_to_ws(ws, topic, message)) 
+                                 for ws in subscribers[topic]]
+                        # We don't await them to avoid blocking this node's processing
+                            
+            except json.JSONDecodeError:
+                logger.error("Received malformed JSON")
+                
+    except WebSocketDisconnect:
+        # Cleanup subscriptions on disconnect
+        if websocket in active_nodes:
+            logger.info(f"Node {active_nodes[websocket]} disconnected.")
+            del active_nodes[websocket]
+            
+        for topic in client_subscriptions:
+            if topic in subscribers and websocket in subscribers[topic]:
+                subscribers[topic].remove(websocket)
+        logger.debug("A client disconnected and was cleaned up.")
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+import os
+import sqlite3
+
+os.makedirs("broker_dashboard", exist_ok=True)
+
+@app.get("/api/nodes")
+async def api_get_nodes():
+    return {"nodes": list(active_nodes.values())}
+
+@app.get("/api/audit")
+async def api_get_audit():
+    with sqlite3.connect("logs/swim_audit.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT timestamp, topic, message_type, source_node, payload FROM audit_log ORDER BY id DESC LIMIT 100")
+        rows = cursor.fetchall()
+        msgs = [{"timestamp": r[0], "topic": r[1], "message_type": r[2], "source_node": r[3], "payload": json.loads(r[4])} for r in rows]
+        return {"logs": msgs}
+
+@app.get("/", response_class=HTMLResponse)
+async def get_index():
+    # Adjusted path for web/broker_dashboard
+    with open("web/broker_dashboard/index.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+app.mount("/", StaticFiles(directory="web/broker_dashboard"), name="static")
+
+if __name__ == "__main__":
+    logger.info("Starting DDFN V2 Message Broker on ws://127.0.0.1:8001/ws")
+    uvicorn.run(app, host="127.0.0.1", port=8001, ws_ping_interval=30, ws_ping_timeout=30)

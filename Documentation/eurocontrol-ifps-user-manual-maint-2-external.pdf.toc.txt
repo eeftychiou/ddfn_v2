@@ -1,0 +1,511 @@
+Edition: WAVE-2.1
+Edition date: 04-11-2025
+Classification: Green
+Network ManagerIFPS Users Manual
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  i 
+ DOCUMENT CONTROL  
+Document Title  IFPS Users Manual  
+Document Subtitle  Network Manager  
+Document Reference    
+Edition Number  WAVE -2.1 
+Edition Validity Date  04-11-2025 
+Classification  Green  
+Accessibility  Intranet  
+Status  Released Issue  
+Author(s)   NMD/NOM/OTR – Andy Woollin  
+Contact Person(s)  Andy WOOLLIN (NMD/NOM/ OTR ) 
+ 
+ 
+APPROVAL TABLE  
+Authority  Date  Signature  
+Prepared by:  
+ NMD/NOM/OTR – Andy Woollin  17-10-2025  Email  
+Reviewed and endorsed by:  
+ NMD/NOM/OTR – Andy Woollin  
+Head of NMD/NOM/NMOC – Yolanda 
+Portillo  
+Head of NMD/NOM/OTR – Christopher 
+Peregrine  17-10-2025  Email  
+Approved by:  
+Head of NOM – Steven Moore  17-10-2025  Email  
+  
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  ii 
+ EDITION  HISTORY  
+Edition No.  Validity Date  Author(s)  Reason  
+19.2  15/01/2016  HOT  New naming for FP Staff  
+20.0  12/04/2016  HOT  NM 20.0 Release  
+20.1  25/10/2016  HOT  NM 20.5 Release  
+21.0  09/05/2017  HOT  NM 21.0 Release  
+21.1  24/10/2017  HOT  NM 21.5 Release  
+22.0  08/05/2018  HOT  NM 22.0 Release  
+22.1  20/11/2018  HOT  NM 22.5 Release  
+23.0  07/05/2019  HOT  NM 23.0 Release  
+23.1  22/10/2019  HOT  NM 23.5 Release  
+24.0  30/06/2020  HOT  NM 24.0 Release  
+24.1  01/12/2020  HOT  All IFPS manual processing 
+exclusively performed in Haren  
+25.0  04/05/2021  HOT  NM 25.0 Release  
+26.0  03/05/202 2 HOT  NM 26.0 Release  
+26.1  30/09/2022  HOT  Removal of NOS occurrences 
+due to NM reorganisation  
+26.2  20/02/2023  HOT  FF-ICE 
+27.0  28/04 /2023  WOO  NM 27.0 Release  
+MAINT -1 17/10/2023  WOO  NM MAINT -1 Release  
+MAINT -2 25/06/2024   NMD/NOM/OTR – 
+Andy Woollin  NM MAINT -2 Release  
+WAVE -2.1 04/11/2025   NMD/NOM/OTR – 
+Andy Woollin  iNM_Wave2.1 Release  
+ 
+  
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  iii 
+ EDITION CHANGE RECORD  
+Title  Amendment Notes  
+1. INTRODUCTION   
+2. NM OPERATIONAL 
+CONTACTS   
+3. FLIGHT PLANS AND 
+ASSOCIATED MESSAGES   
+04. MESSAGE SUBMISSION 
+TO THE IFPS   
+05. MESSAGE 
+DISTRIBUTION  BY THE IFPS  OI-25-002 IFPS/ETFMS distribution time  
+06. RE-ADDRESSING   
+07. ATS DATA EXCHANGE 
+PRESENTATION (ADEXP)   
+08. OPERATIONAL REPLY 
+MESSAGE (ORM)   
+09. ACKNOWLEDGE (ACK) 
+ORM  Comment added to ACK when not FF -ICE compliant  
+10. MANUAL (MAN) ORM   
+11. REJECT (REJ) ORM   
+12. COPY OPERATIONAL 
+REPLY MESSAGE (ORM)   
+13. DETERMINATION OF 
+AIRCRAFT OPERATOR BY IFPS   
+14. ERROR TYPES   
+15. IMPROVEMENT IN 
+QUALITY OF SUBMITTED 
+MESSAGES   
+16. IFPS RE -ROUTE 
+ACCEPTED (IFPSRA)   
+17. IFPS MANUAL 
+PROCESSING PROCEDURES   
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  iv 
+ 18. STANDARD 
+CORRECTION PROCEDURE 1 
+(SCP1)   
+19. STANDARD 
+CORRECTION PROCEDURE 2 
+(SCP2)   
+20. FLIGHT PLAN 
+REVALIDATION    
+21. ATC PRE -DEPARTURE 
+FLIGHT PLAN MODIFICATION 
+(AMOD)   
+22. IFPSTOP/IFPSTART   
+23. KEY FIELDS   
+24. MESSAGE 
+ASSOCIATION  Prevent incorrect discard of Flight Plan Messages  
+25. PROFILE 
+CALCULATION/ROUTE 
+ANALYSIS   
+26.        FLIGHT PLAN CROSS -
+AIRAC CHECKING   
+27. MILITARY FLIGHTS   
+28. GENERAL AIR 
+TRAFFIC/OPERATIONAL AIR 
+TRAFFIC (GAT/OAT)   
+29. iOAT (IMPROVED  
+OPERATIONAL AIR TRAFFIC)  
+FLIGHT PLANNING   
+30. MILITARY POINTS AND 
+ROUTES   
+31. ADDRESSING  OF 
+FLIGHTS WITH OAT 
+PORTION(S)   
+32. BLOCKING LEVELS   
+33. RAD FOR MILITARY 
+FLIGHTS   
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  v 
+ 34. OPEN SKIES FLIGHTS   
+35. VISUAL FLIGHT RULES 
+(VFR)   
+36. NORTH ATLANTIC 
+(NAT) TRAFFIC   
+37. FLEXIBLE USE OF 
+AIRSPACE (FUA) 
+CONDITIONAL ROUTES (CDR)   
+38. ROUTE AVAILABILITY 
+DOCUMENT (RAD)   
+39. REDUCED VERTICAL 
+SEPARATION MINIMA (RVSM)   
+40. 8.33 kHz CHANNEL 
+SPACING   
+41. SSR MODE -S  
+42. EN-ROUTE STAY 
+INDICATOR   
+43. IFPS MONITORING 
+FLIGHT EVOLUTION  Reduce message processing complexity when flight is 
+ATC Activated  
+44. SPECIAL STATUS 
+FLIGHTS (STS)   
+45. STS/SAR INDICATOR   
+46. STS/HEAD INDICATOR   
+47. STS/ATFMX 
+INDICATOR   
+48. STS/HOSP INDICATOR   
+49. STS/HUM INDICATOR   
+50. STS/STATE INDICATOR   
+51. STS/NONRVSM 
+INDICATOR   
+52. STS/FFR INDICATOR   
+53. STS/FLTCK INDICATOR   
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  vi 
+ 54. STS/HAZMAT 
+INDICATOR   
+55. STS/MARSA 
+INDICATOR   
+56. STS/MEDEVAC 
+INDICATOR   
+57. STS/ALTRV INDICATOR   
+58. RUNWAY VISUAL 
+RANGE (RVR)   
+59. ORIGINATOR (ORGN) 
+INDICATOR   
+60. SOURCE (SRC) 
+INDICATOR   
+61. IFP INDICATORS   
+62. IFPS TEST SYSTEM 
+(IFPUV)   
+63. AIRCRAFT OPERATOR 
+WHAT -IF RE -ROUTE (AOWIR)   
+64. DIVERSION ARRIVAL 
+MESSAGES   
+65. ITEM 3:  MESSAGE 
+TITLE   
+66. ITEM 7: AIRCRAFT 
+IDENTIFICATION AND SSR 
+MODE/SSR CODE   
+67. ITEM 8:  FLIGHT RULES 
+AND TYPE OF FLIGHT   
+68. ITEM 9: NUMBER AND 
+TYPE OF AIRCRAFT AND WAKE 
+TURBULENCE CATEGORY   
+69. ITEM 10: EQUIPMENT 
+AND CAPABILITIES   
+70. ITEM 13: DEPARTURE 
+AERODROME AND TIME   
+71. ITEM 15: ROUTE   
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  vii 
+ 72. INITIAL SPEED AND 
+LEVEL   
+73. EN-ROUTE CHANGE OF 
+SPEED / LEVEL   
+74. SID/STAR   
+75. POINTS   
+76. AIRWAYS   
+77. ITEM 16:  DESTINATION 
+AERODROME  AND TOTAL 
+ESTIMATED ELAPSED TIME , 
+DESTINATION ALTERNATE 
+AERODROME( S)  
+78. ITEM 18: OTHER 
+INFORMATION   
+79. ESTIMATED ELAPSED 
+TIME (EET)   
+80. RE-CLEARANCE IN 
+FLIGHT (RIF)  Clarification of system behaviour  
+81. AIRCRAFT 
+REGISTRATION (REG)   
+82. SELCAL (SEL)   
+83. AIRCRAFT OPERATOR 
+(OPR)   
+84. STATUS (STS)   
+85. AIRCRAFT TYPE (TYP)   
+86. AIRCRAFT 
+PERFORMANCE (PER)   
+87. COMMUNICATIONS 
+EQUIPMENT (COM)   
+88. DATA LINK CAPABILITY 
+(DAT)   
+89. NAVIGATION 
+EQUIPMENT (NAV)   
+90. DEPARTURE 
+AERODROME (DEP)   
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  viii 
+ 91. DESTINATION 
+AERODROME (DEST)   
+92. DESTINATION 
+ALTERNATE AERODROME 
+(ALTN)   
+93. EN-ROUTE ALERNATE 
+AERODROME (RALT)   
+94. REMARKS (RMK)   
+95. DATE OF FLIGHT (DOF)   
+96. REPLACEMENT FLIGHT 
+PLAN (RFP)   
+97. CODE  OI/25 -004 incorporated  (CPDLC check in IFPS)  
+New CPDLC  rules.  
+98. STAYINFO   
+99. EUROPEAN 
+DESIGNATOR (EUR)   
+100. PBN (PERFORMANCE 
+BASED NAVIGATION)   
+101. SURVEILLANCE (SUR)   
+102. TAKE -OFF ALTERNATE 
+(TALT)   
+103. EN-ROUTE DELAY OR 
+HOLDING (DLE)   
+104. ADDITIONAL OUTPUT 
+BY THE IFPS   
+105. ITEM 19: 
+SUPPLEMENTARY 
+INFORMATION   
+106. TOTAL FUEL 
+ENDURANCE: E/   
+107.   TOTAL NUMBER OF 
+PERSONS ON BOARD: P/   
+108. EMERGENCY RADIO: R/   
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  ix 
+ 109. SURVIVAL EQUIPMENT: 
+S/  
+110. LIFE JACKETS: J/   
+111. DINGHIES: D/   
+112. AIRCRAFT COLOUR 
+AND SIGNIFICANT  MARKINGS: 
+A/  
+113. OTHER SURVIVAL 
+EQUIPMENT N/   
+114. PILOT IN COMMAND: 
+C/  
+115. MESSAGE TYPES   
+116.  FLIGHT PLAN   
+117. MODIFICATION   
+118. DELAY   
+119. CANCEL LATION    
+120. DEPARTURE (DEP)   
+121. ARRIVAL (ARR)   
+122. REQUEST FLIGHT PLAN 
+(RQP)   
+123. REQUEST 
+SUPPLEMENTARY FLIGHT 
+PLAN (RQS)  Automate RQS process  
+124. AIRBORNE MESSAGE 
+TYPES   
+125. AIR-FILED FLIGHT 
+PLANS (AFIL)   
+126. ATC FLIGHT PLAN 
+PROPOSAL MESSAGE (AFP)   
+127. AFP FOR A MISSING 
+FLIGHT PLAN   
+128. AFP FOR A CHANGE OF 
+ROUTE    
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  x 
+ 129. AFP FOR A CHANGE OF 
+AIRCRAFT TYPE   
+130. AFP FOR A CHANGE OF 
+FLIGHT RULES  (IFR/VFR)   
+131. AFP FOR A CHANGE OF 
+FLIGHT TYPE    
+132. AFP FOR DIVERSION   
+133. AFP FOR A CHANGE OF 
+AIRCRAFT EQUIPMENT   
+134. FLIGHT NOTIFICATION 
+MESSAGE (FNM)   
+135. MESSAGE FROM 
+SHANWICK/SANTA MARIA 
+(MFS)   
+136. ATC FLIGHT PLAN 
+(APL)  Change the default value of the aircraft equipment for APL 
+from FNM/MFS  
+137. ATC FLIGHT PLAN 
+CHANGE (ACH)  Streamline Flight Plan Message distribution  
+138. VOICE 
+COMMUNICATIONS SYSTEM 
+(VCS)   
+139. THE TRANSMIT 
+FUNCTION   
+140. SERVICE AND OTHER 
+NON -STANDARD MESSAGES   
+141. IFPS 
+UNSERVICEABILITIES   
+142. SYSTEM 
+MAINTENANCE AND 
+INTERVENTIONS   
+143. MANUAL CREATION OF 
+MESSAGES   
+144. MESSAGE REJECTED 
+BY PARTNER   
+145. DICTIONARY OF 
+ABBREVIATIONS   
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  xi 
+ 146. EUROCONTROL 
+SPECIFICATION FOR THE 
+INITIAL FLIGHT PLAN   
+147. ERROR MESSAGE 
+DETAILS  PROF195  - Change the composition of FRA related error  
+EFPM215 - Automation of RQP process  
+EFPM241  - Change rules for reporting error  
+EFPM408 - New for  flight status evolution  
+WARN409 – New for  flight status evolution  
+Appendix – FF-ICE  
+A. Introduction  A6 – Editorial change  
+B. FF -ICE Services  B1 – Editorial change  
+C. eFPL Composition  C1 – Add aircraft take -off mass and the definition of the 
+EATMN airspace . 
+C.2.1  – Editorial change . 
+C.5 – NM26 example removed . 
+C.8 – Editorial change  
+D. Re -evaluation   
+E. eFPL Distribution   
+F. Translation & Delivery  Update of translation and deliver y. 
+G. Mixed -Mode Operations   
+ABBREVIATIONS   
+ 
+Amendment to the IFPS USERS MANUAL  
+The main changes are indicated RED with revision bars.  
+Significant deletions of text are indicated with the symbol  
+  
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  xii 
+ TABLE OF CONTENT  
+DOCUMENT CONTROL  ................................ ................................ ................................ ... I 
+APPROVAL TABLE  ................................ ................................ ................................ .........  I 
+EDITION HISTORY  ................................ ................................ ................................ .........  II 
+EDITION CHANGE RECORD  ................................ ................................ ...........................  III 
+TABLE OF CONTENT  ................................ ................................ ................................ .. XII 
+1 INTRODUCTION  ................................ ................................ ............................  2 
+1.1 Scope and Applicability  ................................ ................................ ................  3 
+1.2 Publication  ................................ ................................ ................................ ... 3 
+1.3 Structure  ................................ ................................ ................................ ...... 4 
+1.4 Terminology  ................................ ................................ ................................ . 4 
+2 NETWORK MANAGER OPERATIONAL CONTACTS ................................ .........  8 
+2.1 Operational Problem Reporting  ................................ ................................ ..... 8 
+3 FLIGHT PLANS AND ASSOCIATED MESSAGES  ................................ ...........  10 
+4 MESSAGE SUBMISSION TO THE IFPS  ................................ .........................  14 
+4.1 Aerodrome of Departure (ADEP) within IFPZ  ................................ ...............  14 
+4.2 Aerodrome of Departure (ADEP) outside IFPZ  ................................ .............  15 
+4.3 Message Submission via Gateway  ................................ ..............................  16 
+5 MESSAGE DISTRIBUTION BY THE IFPS ................................ .......................  18 
+5.1 Table of IFPS Message Distribution  ................................ ............................  21 
+6 RE-ADDRESSING  ................................ ................................ ........................  24 
+7 ATS DATA EXCHANGE PRESENTATION (ADEXP)  ................................ ........  26 
+8 OPERATIONAL REPLY MESSAGE (ORM)  ................................ .....................  32 
+9 ACKNOWLEDGEMENT (ACK) ORM  ................................ ..............................  34 
+9.1 General Procedure for Message Originators  ................................ ................  37 
+10 MANUAL (MAN) ORM  ................................ ................................ .................  38 
+10.1  General Procedure for Message Originators  ................................ ................  38 
+11 REJECT (REJ) ORM  ................................ ................................ ....................  40 
+11.1  General Procedure for Message Originators  ................................ ................  42 
+12 COPY OPERATIONAL REPLY MESSAGE (ORM)  ................................ ...........  44 
+12.1  General Procedure for Aircraft Operators  ................................ ....................  44 
+13 DETERMINATION OF AIRCRAFT OPERATOR BY IFPS  ................................ .. 46 
+14 ERROR TYPES  ................................ ................................ ............................  48 
+14.1  Syntax  ................................ ................................ ................................ ........  48 
+14.2  Expanded Flight Plan Message (EFPM)  ................................ .......................  48 
+14.3  General Route  ................................ ................................ ............................  48 
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  xiii 
+ 14.4  Rerouting  ................................ ................................ ................................ ... 48 
+14.5  Profile  ................................ ................................ ................................ ........  49 
+14.6  Warning  ................................ ................................ ................................ ..... 49 
+14.7  Routing Assistance  ................................ ................................ ....................  49 
+15 IMPROVEMENT IN QUALITY OF SUBMITTED MESSAGES  ............................  50 
+16 IFPS RE -ROUTE ACCEPTED (IFPSRA)  ................................ .........................  53 
+16.1  General Procedures associated to the use of IFPSRA  ................................ .. 54 
+16.2  ANUs in the NM CACD Receiving  ‘NO‘ ACK ORMs  ................................ .......  55 
+17 IFPS MANUAL PROCESSING PROCEDURES  ................................ ................  57 
+18 STANDARD CORRECTION PROCEDURE 1 (SCP1)  ................................ ........  59 
+18.1  SCP1 General Procedures  ................................ ................................ ..........  59 
+18.2  SCP1 Table  ................................ ................................ ................................  60 
+18.3  Flights within the Rostov, Kaliningrad and Belarus FIR Airspaces  ................  61 
+18.4  Re-routeing Outside the IFPZ  ................................ ................................ ...... 61 
+18.5  Flights with Route Coordinated with ATC  ................................ ....................  62 
+18.6  Procedure for Military RPAS (Remotely Piloted Aircraft System)/UAS (Unmanned 
+Aircraft System)  ................................ ................................ .........................  63 
+19 STANDARD CORRECTION PROCEDURE 2 (SCP2)  ................................ ........  66 
+19.1  SCP2 General Procedures  ................................ ................................ ..........  66 
+19.2  SCP2 Table for Departure, Destination or Destination Alternate Aerodromes 66 
+20 FLIGHT PLAN REVALIDATION  ................................ ................................ .... 68 
+20.1  Process and General Procedures for REVAL_SUSPENDED  ...........................  70 
+20.2  Process and General Procedures for REVAL_ADVISORY  ..............................  71 
+20.3  Associated Invalid Messages  ................................ ................................ ..... 71 
+20.4  General Procedures for Message Originators for flights with status REVAL 
+SUSPENDED  ................................ ................................ ...............................  72 
+20.5  General Procedures for Message Originator for flights with status REVAL ADVISORY
+ ................................ ................................ ................................ ..................  73 
+21 ATC PRE -DEPARTURE FLIGHT PLAN MODIFICATION (AMOD)  ....................  74 
+22 IFPSTOP/IFPSTART  ................................ ................................ ...................  76 
+23 KEY FIELDS  ................................ ................................ ................................  77 
+24 MESSAGE ASSOCIATION  ................................ ................................ ...........  79 
+25 PROFILE CALCULATION/ROUTE ANALYSIS  ................................ ................  81 
+26 FLIGHT PLAN CROSS -AIRAC CHECKING ................................ .....................  85 
+27 MILITARY FLIGHTS  ................................ ................................ ....................  88 
+27.1  General Procedures  ................................ ................................ ....................  88 
+28 GENERAL AIR TRAFFIC/OPERATIONAL AIR TRAFFIC (GAT/OAT)  ................  90 
+29 IOAT (IMPROVED OPERATIONAL AIR TRAFFIC) FLIGHT PLANNING  ............  92 
+30 MILITARY POINTS AND ROUTES  ................................ ................................  96 
+EUROCONTROL   Network Management Directorate  
+ 
+Edition Number:  WAVE -2.1 Edition Validity Date:  04-11-2025  Classification: Green  Page:  xiv 
+ 31 ADDRESSING OF FLIGHTS WITH OAT PORTION(S)  ................................ ..... 98 
+32 BLOCKING LEVELS  ................................ ................................ ...................  100 
+33 RAD FOR MILITARY FLIGHTS  ................................ ................................ ... 102 
+33.1  AIP/RAD for Military Flights  ................................ ................................ ...... 102 
+34 OPEN SKIES FLIGHTS  ................................ ................................ ...............  103 
+34.1  General Procedures for Open Skies Flights  ................................ ...............  104 
+35 VISUAL FLIGHT RULES (VFR)  ................................ ................................ ... 105 
+36 NORTH ATLANTIC (NAT) TRAFFIC  ................................ ...........................  109 
+37 FLEXIBLE USE OF AIRSPACE (FUA)/CONDITIONAL ROUTES (CDR)  ............  111 
+38 ROUTE AVAILABILITY DOCUMENT (RAD)  ................................ .................  113 
+38.1  General Procedures for Busy Friday and Public Holiday  .............................  115 
+38.2  General Procedures for RAD Errors due to a NM CACD Deficiency  .............  115 
+38.3  Preparation of On -line RAD Modifications  ................................ .................  116 
+38.4  RAD Errors for Profile  ................................ ................................ ...............  117 
+38.5  Verification of RAD Restrictions per AIRAC Cycle  ................................ ...... 119 
+38.6  RAD Units with Dependant Applicability  ................................ ....................  120 
+38.7  Incorrectly Suspended Flights ................................ ................................ ... 120 
+38.8  Flight Plan Messages on Closed NTFSR  ................................ ....................  121 
+39 REDUCED VERTICAL SEPARATION MINIMA (RVSM)  ................................ . 123 
+40 8.33 KHZ CHANNEL SPACING  ................................ ................................ .. 125 
+41 SSR MODE -S ................................ ................................ ............................  129 
+42 EN-ROUTE STAY INDICATOR  ................................ ................................ .... 131 
+43 IFPS MONITORING FLIGHT EVOLUTION  ................................ ...................  135 
+44 SPECIAL STATUS FLIGHTS (STS)  ................................ .............................  136 
+44.1  Dynamic Properties of the STS Sub -field  ................................ ..................  137 
+45 STS/SAR INDICATOR  ................................ ................................ ...............  138 
+46 STS/HEAD INDICATOR  ................................ ................................ .............  140 
+47 STS/ATFMX INDICATOR  ................................ ................................ ...........  142 
+48 STS/HOSP INDICATOR  ................................ ................................ .............  144 
+49 STS/HUM INDICATOR  ................................ ................................ ..............  146 
+50 STS/STATE INDICATOR  ................................ ................................ ...........  148 
+51 STS/NONRVSM INDICATOR  ................................ ................................ ..... 150 
+52 STS/FFR INDICATOR  ................................ ................................ ................  152 
+53 STS/FLTCK INDICATOR  ................................ ................................ ............  154 
+54 STS/HAZMAT INDICATOR  ................................ ................................ ........  156 
+55 STS/MARSA INDICATOR  ................................ ................................ ..........  158 
+56 STS/MEDEVAC INDICATOR  ................................ ................................ ...... 160 

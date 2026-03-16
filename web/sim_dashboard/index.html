@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Flight Schedule Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <header class="glass-panel main-header">
+        <div class="header-left">
+            <h1>Global Flight Schedule Manager</h1>
+            <span class="subtitle">DDFN Network Control</span>
+        </div>
+        <div class="header-right">
+            <div id="clock">--:--:-- UTC</div>
+            <div class="node-badge" id="broker-status">Broker: Connecting...</div>
+            <div class="status-indicator">
+                <span class="dot ddfn-dot"></span> <span>SIM CORE</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-grid">
+        <!-- AIXM Loader -->
+        <div class="glass-panel form-panel">
+            <h2>AIXM Airspace Import</h2>
+            <div class="form-group">
+                <label for="aixm_path">AIXM File Path (Local Server)</label>
+                <div class="input-with-button">
+                    <input type="text" id="aixm_path" placeholder="e.g. AIXM/BD_2025-09-30_400005921419525.xml" autocomplete="off">
+                    <button id="load-aixm-btn" class="btn-secondary">Load Data</button>
+                </div>
+            </div>
+            <div id="aixm-status" class="injection-feedback"></div>
+            
+            <div class="sector-list-container" id="sector-list-container" style="display:none;">
+                <h3>Active AIXM Sectors</h3>
+                <div class="sector-pills" id="sector-pills">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- New Flight Injection Form -->
+        <div class="glass-panel form-panel">
+            <h2>Inject New Flight Plan</h2>
+            <form id="injection-form">
+                <div class="form-group">
+                    <label for="flight_id">Flight ID</label>
+                    <input type="text" id="flight_id" placeholder="e.g. BAW999" required autocomplete="off">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="origin">Origin ICAO</label>
+                        <input type="text" id="origin" placeholder="e.g. EGLL" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="destination">Dest ICAO</label>
+                        <input type="text" id="destination" placeholder="e.g. EDDM" required autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="route_string">Route String (ICAO Format)</label>
+                    <textarea id="route_string" rows="3" placeholder="e.g. LAM DVR VEDAM ZAGZO..." required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cruise_fl">Cruise FL</label>
+                        <input type="number" id="cruise_fl" placeholder="e.g. 350" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="departure_offset_mins">Dept Offset (Mins)</label>
+                        <input type="number" id="departure_offset_mins" placeholder="e.g. 10 (future) or -5 (past)"
+                            required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="inject-btn">Inject to SWIM Network</button>
+            </form>
+            <div id="injection-status" class="injection-feedback"></div>
+        </div>
+
+        <!-- Global Airspace Inventory -->
+        <div class="glass-panel table-panel">
+            <div class="table-header">
+                <h2>Global System Inventory</h2>
+                <div class="search-box">
+                    <input type="text" id="search-flights" placeholder="Search flights...">
+                </div>
+                <span id="flight-count" class="badge">Tracking: 0</span>
+            </div>
+
+            <div class="table-container">
+                <table id="global-inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Node (View)</th>
+                            <th>Flight ID</th>
+                            <th>Origin</th>
+                            <th>Dest</th>
+                            <th>Status</th>
+                            <th>Entry Fix</th>
+                            <th>Entry ETA</th>
+                            <th>Exit ETA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
