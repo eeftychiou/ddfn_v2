@@ -30,6 +30,14 @@ from ddfn_v2.util.aixm_tool import AIXMParser
 import os
 from ddfn_v2.core.persistence import PersistenceManager
 from ddfn_v2.services.regulation_service import RegulationService
+from ddfn_v2.core.request_models import (
+    SetupConfigurationRequest, ApplyAIXMConfigRequest, CapacityOverrideRequest,
+    MergeSectorsRequest, SetWindowRequest, ApplyConfigurationRequest,
+    RADToggleRequest, AIXMFileRequest, LoadConfigurationRequest,
+    SuccessResponse, ErrorResponse, ConfigurationListResponse,
+    SetupStatusResponse, AIXMSourceResponse, AIXMUploadResponse
+)
+from ddfn_v2.util.validators import validate_file_path_for_aixm, ValidationError
 
 CONFIG_DIR = "node_configs"
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -860,23 +868,23 @@ async def main():
             }
 
     @app.post("/api/sectors/window")
-    async def api_set_window(req: Request):
-        data = await req.json()
+    async def api_set_window(data: SetWindowRequest):
+        # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
             "message_type": "SET_MEASURE_WINDOW",
-            "target_node": data["node_id"],
-            "measure_window": data["measure_window"]
+            "target_node": data.node_id,
+            "measure_window": data.measure_window
         })
         return {"status": "success"}
 
     @app.post("/api/sectors/merge")
-    async def api_merge_sectors(req: Request):
-        data = await req.json()
+    async def api_merge_sectors(data: MergeSectorsRequest):
+        # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
             "message_type": "MERGE_SECTORS",
-            "target_node": data["target_node"],
-            "sector_ids": data["sector_ids"],
-            "virtual_id": data["virtual_id"]
+            "target_node": data.target_node,
+            "sector_ids": data.sector_ids,
+            "virtual_id": data.virtual_id
         })
         return {"status": "success"}
 
@@ -891,15 +899,14 @@ async def main():
         return {"rules": [dataclasses.asdict(r) for r in v.rules]}
 
     @app.post("/api/rad/toggle")
-    async def toggle_rad_rule(data: dict):
+    async def toggle_rad_rule(data: RADToggleRequest):
         """Activates or deactivates a RAD rule."""
-        rule_id = data.get("rule_id")
-        active = data.get("active", True)
+        # Request is validated by Pydantic model
         if hasattr(node, 'rad_validator'):
             for r in node.rad_validator.rules:
-                if r.rule_id == rule_id:
-                    r.active = active
-                    return {"status": "success", "rule_id": rule_id, "active": active}
+                if r.rule_id == data.rule_id:
+                    r.active = data.active
+                    return {"status": "success", "rule_id": data.rule_id, "active": data.active}
         return {"status": "error", "message": "Rule not found or node not initialized"}
 
     @app.get("/api/configurations")
@@ -910,25 +917,30 @@ async def main():
         }
 
     @app.post("/api/configurations/apply")
-    async def api_apply_configuration(req: Request):
-        data = await req.json()
+    async def api_apply_configuration(data: ApplyConfigurationRequest):
+        # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
             "message_type": "APPLY_CONFIGURATION",
-            "target_node": data["target_node"],
-            "config_name": data["config_name"]
+            "target_node": data.target_node,
+            "config_name": data.config_name
         })
         return {"status": "success"}
 
 
     @app.get("/api/aixm/firs")
     async def api_get_aixm_firs(file_path: str):
-        if not os.path.exists(file_path):
-            return {"status": "error", "message": "File not found"}
+        # Validate file path to prevent directory traversal
         try:
-            parser = AIXMParser(file_path)
+            validated_path = validate_file_path_for_aixm(file_path, must_exist=True)
+        except ValueError as e:
+            node.logger.warning(f"Invalid file path in /api/aixm/firs: {e}")
+            return {"status": "error", "message": f"Invalid file path: {e}"}
+
+        try:
+            parser = AIXMParser(validated_path)
             sectors = parser.extract_sectors()
             firs = sorted(list(set(s.parent_fir for s in sectors if s.parent_fir)))
-            node.logger.info(f"AIXM Source: {file_path}. Found {len(sectors)} sectors and {len(firs)} FIRs.")
+            node.logger.info(f"AIXM Source: {validated_path}. Found {len(sectors)} sectors and {len(firs)} FIRs.")
             return {"status": "success", "firs": firs}
         except Exception as e:
             node.logger.error(f"Error extracting FIRs: {str(e)}")
@@ -936,10 +948,15 @@ async def main():
 
     @app.get("/api/aixm/sectors")
     async def api_get_aixm_sectors(file_path: str, fir_id: str):
-        if not os.path.exists(file_path):
-            return {"status": "error", "message": "File not found"}
+        # Validate file path and FIR ID
         try:
-            parser = AIXMParser(file_path)
+            validated_path = validate_file_path_for_aixm(file_path, must_exist=True)
+        except ValueError as e:
+            node.logger.warning(f"Invalid file path in /api/aixm/sectors: {e}")
+            return {"status": "error", "message": f"Invalid file path: {e}"}
+
+        try:
+            parser = AIXMParser(validated_path)
             all_sectors = parser.extract_sectors()
             # Filter by parent_fir prefix
             filtered = [s for s in all_sectors if s.parent_fir == fir_id]
@@ -953,31 +970,23 @@ async def main():
             return {"status": "error", "message": str(e)}
 
     @app.post("/api/config/apply_aixm")
-    async def api_apply_aixm_config(req: Request):
-        data = await req.json()
-        selected_sectors = data.get("sectors", []) # List of {id, fl_lower, fl_upper}
-        file_path = data.get("file_path")
-        fir_id = data.get("fir_id")
-        
-        node.logger.info(f"API: Apply AIXM. File: {file_path}, FIR: {fir_id}, Config Name: {data.get('config_name')}, Sectors: {len(selected_sectors)}")
-        
-        if not file_path or not selected_sectors:
-            node.logger.warning("API: Missing file_path or sectors")
-            return {"status": "error", "message": "Missing file_path or sectors"}
-            
+    async def api_apply_aixm_config(data: ApplyAIXMConfigRequest):
+        # Request is validated by Pydantic model
+        node.logger.info(f"API: Apply AIXM. File: {data.file_path}, FIR: {data.fir_id}, Config Name: {data.config_name}, Sectors: {len(data.sectors)}")
+
         try:
             # Ensure geometries are loaded in registry
-            load_aixm_to_registry(file_path)
-            
+            load_aixm_to_registry(data.file_path)
+
             new_sectors = []
-            for s_info in selected_sectors:
+            for s_info in data.sectors:
                 s_id = s_info["id"]
                 if s_id in GLOBAL_SECTORS:
                     geo = GLOBAL_SECTORS[s_id]
                     # Use manual FLs if provided, else use AIXM defaults
                     lo = s_info.get("fl_lower", geo.fl_lower)
                     hi = s_info.get("fl_upper", geo.fl_upper)
-                    
+
                     new_sectors.append(SectorCapacity(
                         sector_id=s_id,
                         configuration="AIXM_DYNAMIC",
@@ -987,15 +996,16 @@ async def main():
                         fl_lower=lo,
                         fl_upper=hi
                     ))
-            
+
             async with node._state_lock:
                 node.sectors = new_sectors
-                node.aixm_source_file = file_path
-                node.aixm_source_fir = fir_id
-                node.save_local_config(config_name=data.get("config_name"))
-                
+                node.aixm_source_file = data.file_path
+                node.aixm_source_fir = data.fir_id
+                node.save_local_config(config_name=data.config_name)
+
             return {"status": "success", "message": f"Applied {len(new_sectors)} sectors."}
         except Exception as e:
+            node.logger.error(f"Error applying AIXM config: {e}")
             return {"status": "error", "message": str(e)}
 
     @app.get("/api/config/aixm_source")
@@ -1018,45 +1028,47 @@ async def main():
         }
 
     @app.post("/api/setup/configure")
-    async def api_setup_configure(req: Request):
+    async def api_setup_configure(data: SetupConfigurationRequest):
+        # Request is validated by Pydantic model
+        node.logger.info(f"Received setup configuration request for FIR: {data.fir_id}")
+
         try:
-            data = await req.json()
-            node.logger.info(f"Received setup configuration request: {data}")
-            file_path = data.get("file_path")
-            fir_id = data.get("fir_id")
-            window_size = int(data.get("window_size", 120))
-            config_name = data.get("config_name", f"{fir_id} Config")
-            
-            if not file_path or not fir_id:
-                return {"status": "error", "message": "Missing file_path or fir_id"}
-            
             # 1. Load AIXM
-            load_aixm_to_registry(file_path)
-            
+            load_aixm_to_registry(data.file_path)
+
             # 2. Extract and assign sectors
             from ddfn_v2.eng.airspace import get_fir_sectors as get_global_fir_sectors
-            aixm_sectors = get_global_fir_sectors(fir_id)
+            aixm_sectors = get_global_fir_sectors(data.fir_id)
             if not aixm_sectors:
-                return {"status": "error", "message": f"No sectors found for FIR {fir_id} in {file_path}"}
-                
+                return {"status": "error", "message": f"No sectors found for FIR {data.fir_id} in {data.file_path}"}
+
+            config_name = data.config_name or f"{data.fir_id} Config"
+
             async with node._state_lock:
                 node.sectors = [from_dict(SectorCapacity, s) for s in aixm_sectors]
-                node.aixm_source_file = file_path
-                node.aixm_source_fir = fir_id
-                node._measure_window_minutes = window_size
+                node.aixm_source_file = data.file_path
+                node.aixm_source_fir = data.fir_id
+                node._measure_window_minutes = data.window_size
                 node.is_configured = True
                 node.save_local_config(config_name=config_name)
-                
+
             # 3. Reprocess any flights received during unconfigured state
             await node._reprocess_all_flights()
-            
-            return {"status": "success", "message": f"Node configured for {fir_id} with {len(node.sectors)} sectors as '{config_name}'"}
+
+            return {"status": "success", "message": f"Node configured for {data.fir_id} with {len(node.sectors)} sectors as '{config_name}'"}
         except Exception as e:
             node.logger.error(f"Setup failure: {e}")
             return {"status": "error", "message": str(e)}
 
     @app.get("/api/config/load")
     async def api_load_config(name: str):
+        # Validate config name
+        try:
+            from ddfn_v2.util.validators import validate_config_name
+            validate_config_name(name)
+        except ValueError as e:
+            return {"status": "error", "message": f"Invalid configuration name: {e}"}
+
         success = node.load_named_config(name)
         if success:
             return {"status": "success"}
@@ -1064,6 +1076,13 @@ async def main():
 
     @app.delete("/api/config/delete/{name}")
     async def api_delete_config(name: str):
+        # Validate config name
+        try:
+            from ddfn_v2.util.validators import validate_config_name
+            validate_config_name(name)
+        except ValueError as e:
+            return {"status": "error", "message": f"Invalid configuration name: {e}"}
+
         node.delete_named_config(name)
         return {"status": "success"}
 
@@ -1087,12 +1106,17 @@ async def main():
 
     @app.get("/api/aixm/airports")
     async def api_get_aixm_airports(file_path: str, fir_id: str = None):
-        if not os.path.exists(file_path):
-            return {"status": "error", "message": "File not found"}
+        # Validate file path
         try:
-            parser = AIXMParser(file_path)
+            validated_path = validate_file_path_for_aixm(file_path, must_exist=True)
+        except ValueError as e:
+            node.logger.warning(f"Invalid file path in /api/aixm/airports: {e}")
+            return {"status": "error", "message": f"Invalid file path: {e}"}
+
+        try:
+            parser = AIXMParser(validated_path)
             airports = parser.extract_airports(fir_id=fir_id)
-            node.logger.info(f"API: Extracted {len(airports)} airports for FIR {fir_id} from {file_path}")
+            node.logger.info(f"API: Extracted {len(airports)} airports for FIR {fir_id} from {validated_path}")
             return {"status": "success", "airports": airports}
         except Exception as e:
             node.logger.error(f"Error extracting airports: {str(e)}")
@@ -1100,12 +1124,17 @@ async def main():
 
     @app.get("/api/aixm/waypoints")
     async def api_get_aixm_waypoints(file_path: str, fir_id: str = None):
-        if not os.path.exists(file_path):
-            return {"status": "error", "message": "File not found"}
+        # Validate file path
         try:
-            parser = AIXMParser(file_path)
+            validated_path = validate_file_path_for_aixm(file_path, must_exist=True)
+        except ValueError as e:
+            node.logger.warning(f"Invalid file path in /api/aixm/waypoints: {e}")
+            return {"status": "error", "message": f"Invalid file path: {e}"}
+
+        try:
+            parser = AIXMParser(validated_path)
             waypoints = parser.extract_waypoints(fir_id=fir_id)
-            node.logger.info(f"API: Extracted {len(waypoints)} waypoints for FIR {fir_id} from {file_path}")
+            node.logger.info(f"API: Extracted {len(waypoints)} waypoints for FIR {fir_id} from {validated_path}")
             return {"status": "success", "waypoints": waypoints}
         except Exception as e:
             node.logger.error(f"Error extracting waypoints: {str(e)}")
@@ -1113,28 +1142,33 @@ async def main():
 
     @app.get("/api/aixm/routes")
     async def api_get_aixm_routes(file_path: str, fir_id: str = None):
-        if not os.path.exists(file_path):
-            return {"status": "error", "message": "File not found"}
+        # Validate file path
         try:
-            parser = AIXMParser(file_path)
+            validated_path = validate_file_path_for_aixm(file_path, must_exist=True)
+        except ValueError as e:
+            node.logger.warning(f"Invalid file path in /api/aixm/routes: {e}")
+            return {"status": "error", "message": f"Invalid file path: {e}"}
+
+        try:
+            parser = AIXMParser(validated_path)
             routes = parser.extract_routes(fir_id=fir_id)
-            node.logger.info(f"API: Extracted {len(routes)} routes for FIR {fir_id} from {file_path}")
+            node.logger.info(f"API: Extracted {len(routes)} routes for FIR {fir_id} from {validated_path}")
             return {"status": "success", "routes": routes}
         except Exception as e:
             node.logger.error(f"Error extracting routes: {str(e)}")
             return {"status": "error", "message": str(e)}
 
     @app.post("/api/sectors/override")
-    async def api_override_capacity(req: Request):
-        data = await req.json()
+    async def api_override_capacity(data: CapacityOverrideRequest):
+        # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
             "message_type": "MANUAL_CAPACITY_OVERRIDE",
-            "target_node": data["target_node"],
-            "sector": data["sector"],
-            "capacity": data["capacity"],
-            "start_time": data.get("start_time", "00:00"),
-            "end_time": data.get("end_time", "23:59"),
-            "reason": data.get("reason", "WEATHER")
+            "target_node": data.target_node,
+            "sector": data.sector,
+            "capacity": data.capacity,
+            "start_time": data.start_time,
+            "end_time": data.end_time,
+            "reason": data.reason
         })
         return {"status": "success"}
 
