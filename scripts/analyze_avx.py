@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+import os
 
 def analyze_avx(file_path):
     tree = ET.parse(file_path)
@@ -17,4 +18,4 @@ def analyze_avx(file_path):
                     print(f"    GChild: {gchild.tag}, Text: {gchild.text.strip() if gchild.text else ''}")
 
 if __name__ == "__main__":
-    analyze_avx(r"g:\My Drive\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml")
+    analyze_avx(os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml"))

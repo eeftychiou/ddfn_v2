@@ -30,7 +30,7 @@ def analyze_full_aixm(file_path):
     print(f"Found {len(routes)} Route segments.")
 
 if __name__ == "__main__":
-    path = r"ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml"
+    path = os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml")
     if not os.path.exists(path):
         print(f"File not found: {path}")
     else:

@@ -59,6 +59,6 @@ def generate_schedule(aixm_path: str, output_path: str, num_flights: int = 200):
     print(f"Generated {len(schedule)} flights and saved to {output_path}")
 
 if __name__ == "__main__":
-    AIXM_FILE = r"c:\Users\eftyc\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml"
+    AIXM_FILE = os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml")
     OUTPUT_FILE = r"c:\Users\eftyc\Antigravity\ddfn_v2\real_schedule.json"
     generate_schedule(AIXM_FILE, OUTPUT_FILE)

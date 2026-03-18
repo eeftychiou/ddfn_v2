@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+websockets
+python-multipart
+pydantic>=2.0
+pytest
+httpx
+pytest-asyncio
+playwright
+pytest-playwright
+hypothesis

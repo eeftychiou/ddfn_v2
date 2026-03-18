@@ -13,7 +13,7 @@ from ddfn_v2.services.fmp_service import FMPNode
 from ddfn_v2.eng.airspace import load_from_aixm, SECTORS, WAYPOINTS, get_fir_sectors
 from ddfn_v2.core.models import FlightPlanFiled, from_dict, SectorCapacity
 
-AIXM_FILE = r"c:\Users\eftyc\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml"
+AIXM_FILE = os.path.join(os.getcwd(), "AIXM", "BD_2025-09-30_400005921419525.xml")
 
 def run_broker(port):
     uvicorn.run(broker_app, host="127.0.0.1", port=port, log_level="error")
