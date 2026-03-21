@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Broker")
 
-auditor = SWIMAuditLog("logs/swim_audit.db")
+auditor = SWIMAuditLog("data/swim_audit.db")
 
 app = FastAPI(title="DDFN SWIM Message Broker")
 
@@ -101,7 +101,7 @@ from fastapi.responses import HTMLResponse
 import os
 import sqlite3
 
-os.makedirs("broker_dashboard", exist_ok=True)
+os.makedirs("logs", exist_ok=True)
 
 @app.get("/api/nodes")
 async def api_get_nodes():
@@ -109,7 +109,7 @@ async def api_get_nodes():
 
 @app.get("/api/audit")
 async def api_get_audit():
-    with sqlite3.connect("logs/swim_audit.db") as conn:
+    with sqlite3.connect("data/swim_audit.db") as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT timestamp, topic, message_type, source_node, payload FROM audit_log ORDER BY id DESC LIMIT 100")
         rows = cursor.fetchall()

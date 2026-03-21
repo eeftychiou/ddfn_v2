@@ -39,7 +39,6 @@ node_modules/
 # Data files (often too large or specific to local)
 data/
 AIXM/
-node_configs/
-test_persistence*.db
+test_output/
 .hypothesis/
-fail_*.png
+uploads/

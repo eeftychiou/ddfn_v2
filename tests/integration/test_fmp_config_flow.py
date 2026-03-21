@@ -1,5 +1,6 @@
 import pytest
 import os
+import sys
 import requests
 import subprocess
 import time
@@ -8,7 +9,7 @@ import json
 import socket
 
 # Use a separate config dir for tests to avoid mess
-TEST_CONFIG_DIR = "test_node_configs"
+TEST_CONFIG_DIR = os.path.join("test_output", "node_configs")
 
 def get_free_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -39,7 +40,7 @@ def broker_server():
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
     proc = subprocess.Popen(
-        ["python", "-m", "ddfn_v2.core.broker"],
+        [sys.executable, "-m", "ddfn_v2.core.broker"],
         env=env,
         cwd=os.getcwd()
     )
@@ -57,12 +58,14 @@ def fmp_server(broker_server):
     
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["DDFN_CONFIG_DIR"] = TEST_CONFIG_DIR
     
-    log_path = f"server_{node_id}.log"
+    os.makedirs(os.path.join("test_output", "logs"), exist_ok=True)
+    log_path = os.path.join("test_output", "logs", f"server_{node_id}.log")
     log_file = open(log_path, "w", buffering=1)
     
     proc = subprocess.Popen(
-        ["python", "-m", "ddfn_v2.services.fmp_service", node_id, "--port", str(port)],
+        [sys.executable, "-m", "ddfn_v2.services.fmp_service", "--node_id", node_id, "--port", str(port)],
         env=env,
         cwd=os.getcwd(),
         stdout=log_file,
@@ -96,8 +99,11 @@ def fmp_server(broker_server):
     except subprocess.TimeoutExpired:
         proc.kill()
     log_file.close()
-    if os.path.exists(log_path):
-        os.remove(log_path)
+    try:
+        if os.path.exists(log_path):
+            os.remove(log_path)
+    except PermissionError:
+        pass
 
 def test_unconfigured_startup_and_flow(fmp_server):
     base_url = fmp_server["base_url"]
@@ -131,7 +137,7 @@ def test_unconfigured_startup_and_flow(fmp_server):
     
     # 4. Verify local persistence
     node_id_full = f"{node_id}_DDFN_NODE"
-    config_file = os.path.join("node_configs", f"{node_id_full}.json")
+    config_file = os.path.join(TEST_CONFIG_DIR, f"{node_id_full}.json")
     assert os.path.exists(config_file)
     with open(config_file, "r") as f:
         saved_data = json.load(f)

@@ -20,8 +20,8 @@ SRC_DIR = os.path.join(BASE_DIR, "src")
 def start_process(cmd_path, name, args=None):
     print(f"Starting {name}...")
     log_name = name.replace("/", "_").lower()
-    os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
-    log_file = open(os.path.join(BASE_DIR, "logs", f"ui_test_{log_name}.log"), "w")
+    os.makedirs(os.path.join(BASE_DIR, "test_output", "logs"), exist_ok=True)
+    log_file = open(os.path.join(BASE_DIR, "test_output", "logs", f"ui_test_{log_name}.log"), "w")
     
     env = os.environ.copy()
     env["PYTHONPATH"] = SRC_DIR + os.pathsep + env.get("PYTHONPATH", "")
@@ -222,11 +222,11 @@ def run_ui_tests():
                     print(f"  [OK] Flight Inventory table populated with {rows} flights.")
                 else:
                     print("  [ERR] Flight Inventory table is empty after timeout.")
-                    page.screenshot(path="logs/ui_test_error_empty_inventory.png")
+                    page.screenshot(path="test_output/logs/ui_test_error_empty_inventory.png")
                     test_failed = True
             except Exception as e:
                 print(f"  [ERR] Timeout waiting for flight inventory to populate: {e}")
-                page.screenshot(path="logs/ui_test_error_timeout.png")
+                page.screenshot(path="test_output/logs/ui_test_error_timeout.png")
                 test_failed = True
             
             browser.close()

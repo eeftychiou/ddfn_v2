@@ -31,7 +31,7 @@ import os
 from ddfn_v2.core.persistence import PersistenceManager
 from ddfn_v2.services.regulation_service import RegulationService
 
-CONFIG_DIR = "node_configs"
+CONFIG_DIR = os.environ.get("DDFN_CONFIG_DIR", os.path.join("data", "node_configs"))
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
 

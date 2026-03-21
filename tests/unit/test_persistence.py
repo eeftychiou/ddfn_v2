@@ -8,7 +8,8 @@ from ddfn_v2.core.persistence import PersistenceManager
 class TestPersistence(unittest.TestCase):
     def setUp(self):
         # Use a unique DB name per test to avoid locking issues on Windows
-        self.db_path = f"test_persistence_{uuid.uuid4().hex}.db"
+        os.makedirs("test_output", exist_ok=True)
+        self.db_path = os.path.join("test_output", f"test_persistence_{uuid.uuid4().hex}.db")
         self.pm = PersistenceManager(self.db_path)
 
     def tearDown(self):

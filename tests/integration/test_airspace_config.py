@@ -1,4 +1,5 @@
 import pytest
+import sys
 import os
 import subprocess
 import time
@@ -11,16 +12,21 @@ def fmp_server():
     node_id = "LCCC"
     full_id = f"{node_id}_DDFN_NODE"
     
-    if not os.path.exists("node_configs"):
-        os.makedirs("node_configs")
+    config_dir = os.path.join("test_output", "node_configs")
+    if not os.path.exists(config_dir):
+        os.makedirs(config_dir)
     
     # Aggressive Cleanup
-    for filename in os.listdir("node_configs"):
+    for filename in os.listdir(config_dir):
         if filename.startswith(node_id):
-            try: os.remove(os.path.join("node_configs", filename))
+            try: os.remove(os.path.join(config_dir, filename))
             except: pass
         
-    proc = subprocess.Popen(["python", "fmp_service.py", node_id, "--port", "8010"])
+    env = os.environ.copy()
+    env["DDFN_CONFIG_DIR"] = config_dir
+    env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    
+    proc = subprocess.Popen([sys.executable, "-m", "ddfn_v2.services.fmp_service", "--node_id", node_id, "--port", "8010"], env=env)
     time.sleep(10) 
     yield proc
     print("Stopping FMP Server...")
@@ -103,7 +109,8 @@ def test_icao_symbols_and_labels(fmp_server, page: Page):
         assert has_desig, f"Expected some route designations (R19, A28, etc.), but found: {rte_labels[:10]}"
 
     except Exception as e:
-        page.screenshot(path="fail_icao.png")
+        os.makedirs(os.path.join("test_output", "screenshots"), exist_ok=True)
+        page.screenshot(path=os.path.join("test_output", "screenshots", "fail_icao.png"))
         raise e
 
 def test_node_name_update(fmp_server, page: Page):
@@ -133,5 +140,6 @@ def test_node_name_update(fmp_server, page: Page):
         expect(page.locator("#config-name-display")).to_contain_text("Config: " + config_name, timeout=30000)
 
     except Exception as e:
-        page.screenshot(path="fail_naming.png")
+        os.makedirs(os.path.join("test_output", "screenshots"), exist_ok=True)
+        page.screenshot(path=os.path.join("test_output", "screenshots", "fail_naming.png"))
         raise e
