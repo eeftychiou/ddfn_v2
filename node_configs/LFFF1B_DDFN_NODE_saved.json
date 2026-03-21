@@ -1,0 +1,219 @@
+{
+    "Test_LCCC": {
+        "sectors": [],
+        "aixm_source_file": "AIXM/BD_2025-09-30_400005921419525.xml",
+        "aixm_source_fir": "LCCC",
+        "config_name": "Test_LCCC"
+    },
+    "Test_LCCC_Final": {
+        "sectors": [
+            {
+                "sector_id": "LCCC00002",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 65,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00007",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 205,
+                "fl_upper": 325,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00010",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 105,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00011",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 205,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCCNU",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 325,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCCS2",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00008",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00004",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 325,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00005",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 325,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00006",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 105,
+                "fl_upper": 325,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00001",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00003",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 205,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC00009",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCCE2",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCCWL",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 325,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCCWU",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 325,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            },
+            {
+                "sector_id": "LCCC",
+                "configuration": "AIXM_DYNAMIC",
+                "declared_capacity_per_hour": 40,
+                "current_demand_per_hour": 0,
+                "status": "GREEN",
+                "fl_lower": 0,
+                "fl_upper": 999,
+                "is_virtual": false,
+                "base_sectors": [],
+                "active_capacity": null
+            }
+        ],
+        "aixm_source_file": "AIXM/BD_2025-09-30_400005921419525.xml",
+        "aixm_source_fir": "LCCC",
+        "config_name": "Test_LCCC_Final"
+    }
+}
