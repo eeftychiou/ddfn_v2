@@ -17,4 +17,4 @@ def peek_xml(file_path, num_elements=10):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
-    peek_xml(r"c:\Users\eftyc\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml")
+    peek_xml(os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml"))

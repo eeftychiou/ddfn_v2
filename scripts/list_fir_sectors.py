@@ -1,7 +1,8 @@
 from aixm_tool import AIXMParser
 import json
+import os
 
-parser = AIXMParser(r"c:\Users\eftyc\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml")
+parser = AIXMParser(os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml"))
 sectors = parser.extract_sectors()
 
 target_firs = ["LCCC", "LGGG", "LTAA"]

@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+import os
 
 def analyze_abd(file_path):
     tree = ET.parse(file_path)
@@ -18,4 +19,4 @@ def analyze_abd(file_path):
         print(f"Parent Ase ID: {code_id}, Children: {children}")
         
 if __name__ == "__main__":
-    analyze_abd(r"g:\My Drive\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml")
+    analyze_abd(os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml"))

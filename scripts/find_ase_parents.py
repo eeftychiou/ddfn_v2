@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+import os
 
 def find_ase_parents(file_path):
     tree = ET.parse(file_path)
@@ -16,4 +17,4 @@ def find_ase_parents(file_path):
                 print(f"Sector: {code_id} -> Parent: {parent_id}")
 
 if __name__ == "__main__":
-    find_ase_parents(r"g:\My Drive\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml")
+    find_ase_parents(os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml"))

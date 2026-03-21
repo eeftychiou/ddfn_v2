@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+import os
 
 def find_all_tags(file_path):
     tags = set()
@@ -16,4 +17,4 @@ def find_all_tags(file_path):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
-    find_all_tags(r"g:\My Drive\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml")
+    find_all_tags(os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml"))

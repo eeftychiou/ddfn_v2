@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+import os
 from collections import Counter
 
 def categorize_ase(file_path):
@@ -15,4 +16,4 @@ def categorize_ase(file_path):
     print(Counter(types))
 
 if __name__ == "__main__":
-    categorize_ase(r"g:\My Drive\Antigravity\ddfn_v2\AIXM\BD_2025-09-30_400005921419525.xml")
+    categorize_ase(os.path.join("AIXM", "BD_2025-09-30_400005921419525.xml"))
