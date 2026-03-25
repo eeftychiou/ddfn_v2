@@ -25,6 +25,7 @@ def start_process(cmd_path, name, args=None):
     
     env = os.environ.copy()
     env["PYTHONPATH"] = SRC_DIR + os.pathsep + env.get("PYTHONPATH", "")
+    env["DDFN_API_KEY"] = "TEST_API_KEY"
     
     # cmd_path is like 'ddfn_v2.core.broker'
     full_cmd = [sys.executable, "-m", cmd_path]
@@ -75,7 +76,37 @@ def run_ui_tests():
     processes.append(start_process("ddfn_v2.services.sim_manager", "Sim Manager"))
     
     # Let flights populate
-    time.sleep(20)
+    time.sleep(5)
+    
+    print("Injecting sample flights via Sim Manager...")
+    import json
+    import urllib.request
+    
+    flight_data = {
+        "flight_id": "TEST123",
+        "origin": "LCLK",
+        "destination": "LTAA",
+        "route_string": "LCLK DOREN LTAA",
+        "cruise_fl": 350,
+        "departure_offset_mins": 2
+    }
+    
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:8050/api/flights/inject",
+            data=json.dumps(flight_data).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-API-Key": "TEST_API_KEY"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req) as response:
+            if response.status == 200:
+                print("  [OK] Sample flight injected.")
+            else:
+                print(f"  [WARN] Failed to inject flight: {response.status}")
+    except Exception as e:
+        print(f"  [WARN] Error injecting flight: {e}")
+
+    time.sleep(15) # Wait for trajectory processing
     
     print("Launching Playwright to run UI tests...")
     
@@ -84,6 +115,7 @@ def run_ui_tests():
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1600, "height": 900})
+            page.on("console", lambda msg: print(f"  [BROWSER] {msg.text}"))
             
             # --- Test 1: Load Dashboard ---
             print("Test 1: Load Dashboard...")
@@ -120,6 +152,10 @@ def run_ui_tests():
             sector_count = page.locator(".sector-config-item").count()
             assert sector_count > 0, "No sectors found in config list after FIR selection"
             print(f"  [OK] {sector_count} sectors successfully loaded and displayed.")
+            
+            # Select all sectors
+            print("  >> Selecting all sectors...")
+            page.click("#check-all-sectors")
             
             # Set a name and save
             page.fill("#config-node-name", "LGGG_TEST_NODE")

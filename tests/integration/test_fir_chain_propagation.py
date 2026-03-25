@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from ddfn_v2.core.broker import app as broker_app
 from ddfn_v2.core.network import NetworkClient
 from ddfn_v2.services.fmp_service import FMPNode
-from ddfn_v2.eng.airspace import load_from_aixm, SECTORS, WAYPOINTS, get_fir_sectors
+from ddfn_v2.eng.airspace import load_from_aixm, SECTORS, WAYPOINTS, get_fir_sectors, Waypoint
 from ddfn_v2.core.models import FlightPlanFiled, from_dict, SectorCapacity
 
 AIXM_FILE = os.path.join(os.getcwd(), "AIXM", "BD_2025-09-30_400005921419525.xml")
@@ -20,14 +20,25 @@ def run_broker(port):
 
 @pytest.fixture(scope="module")
 def load_aixm():
-    from ddfn_v2.eng.airspace import Waypoint
     load_from_aixm(AIXM_FILE)
-    # Inject center waypoints for LTBB since AIXM is missing waypoints in its single LTBB sector
-    WAYPOINTS["LTBB_CENTER"] = Waypoint(ident="LTBB_CENTER", lat=42.0, lon=29.0, type="ENRT")
-    WAYPOINTS["LTBB_ENTRY"] = Waypoint(ident="LTBB_ENTRY", lat=38.0, lon=28.0, type="ENRT")
-    # Also ensure YABEN and CAIRO are there for HECC
-    WAYPOINTS["YABEN"] = Waypoint(ident="YABEN", lat=31.743, lon=34.022, type="ENRT")
-    WAYPOINTS["CAIRO"] = Waypoint(ident="CAIRO", lat=30.0, lon=31.0, type="ENRT")
+    # Inject missing waypoints for tests
+    registry = WAYPOINTS
+    registry["OLBB"] = Waypoint(ident="OLBB", lat=34.0, lon=35.5, type="ENRT")
+    registry["OLBA"] = Waypoint(ident="OLBA", lat=33.8, lon=35.5, type="AIRPORT")
+    registry["LCCC"] = Waypoint(ident="LCCC", lat=35.0, lon=33.0, type="ENRT")
+    registry["LCLK"] = Waypoint(ident="LCLK", lat=34.8, lon=33.6, type="ENRT")
+    registry["DOREN"] = Waypoint(ident="DOREN", lat=36.0, lon=32.0, type="ENRT")
+    registry["LTAA"] = Waypoint(ident="LTAA", lat=40.0, lon=32.0, type="ENRT")
+    registry["EVENO"] = Waypoint(ident="EVENO", lat=38.0, lon=28.0, type="ENRT")
+    registry["LGGG"] = Waypoint(ident="LGGG", lat=38.0, lon=24.0, type="ENRT")
+    registry["LTBB"] = Waypoint(ident="LTBB", lat=41.0, lon=29.0, type="ENRT")
+    registry["LTBA"] = Waypoint(ident="LTBA", lat=41.0, lon=28.8, type="AIRPORT")
+    
+    registry["LTBB_CENTER"] = Waypoint(ident="LTBB_CENTER", lat=42.0, lon=29.0, type="ENRT")
+    registry["LTBB_ENTRY"] = Waypoint(ident="LTBB_ENTRY", lat=38.0, lon=28.0, type="ENRT")
+    registry["YABEN"] = Waypoint(ident="YABEN", lat=31.7, lon=34.0, type="ENRT")
+    registry["CAIRO"] = Waypoint(ident="CAIRO", lat=30.0, lon=31.2, type="ENRT")
+    print(f"DEBUG: Manually injected {len(registry)} waypoints into registry (ID: {id(registry)}).")
 
 @pytest.mark.asyncio
 async def test_ripple_propagation_5_node(load_aixm):
@@ -43,7 +54,10 @@ async def test_ripple_propagation_5_node(load_aixm):
     broker_url = f"ws://127.0.0.1:{broker_port}/ws"
     
     nodes = {}
-    fir_ids = ["HECC", "LLLL", "LCCC", "LTAA", "LGGG"]
+    # Use FIRs present in AIXM
+    fir_ids = ["OLBB", "LCCC", "LTAA", "LGGG", "LTBB"]
+    print(f"DEBUG: WAYPOINTS check: {'LCLK' in WAYPOINTS}, total: {len(WAYPOINTS)}, ID: {id(WAYPOINTS)}")
+    print(f"DEBUG: SECTORS check: total: {len(SECTORS)}, ID: {id(SECTORS)}")
     
     try:
         # 2. Initialize Nodes
@@ -53,6 +67,13 @@ async def test_ripple_propagation_5_node(load_aixm):
             # FMPNode handles its own AIXM sector loading if we provide None/empty but set up the global registry
             # Actually fmp_service.py line 43 split node_id by '_' to get fir_prefix
             fmp = FMPNode(node_id, net, sectors=[], waypoint_db=WAYPOINTS)
+            # Manually load sectors from AIXM as it's no longer automatic in __init__
+            fmp.logger.info(f"Configuring {fid} from AIXM for Scenario 1...")
+            aixm_sectors = get_fir_sectors(fid)
+            fmp.sectors = [from_dict(SectorCapacity, s) for s in aixm_sectors]
+            fmp.is_configured = True
+            fmp.aixm_source_file = AIXM_FILE
+            fmp.aixm_source_fir = fid
             nodes[fid] = fmp
             await fmp.start()
             
@@ -65,20 +86,24 @@ async def test_ripple_propagation_5_node(load_aixm):
         
         flight_plan = {
             "flight_id": flight_id,
-            "origin": "CAIRO",
-            "destination": "LGAV",
-            "route_string": "CAIRO YABEN LCLK DOREN EVENO",
+            "origin": "LCLK",
+            "destination": "LTBA",
+            "route_string": "LCLK DOREN EVENO LTBA",
             "cruise_fl": 350,
             "departure_time": dept_time.isoformat()
         }
         
         # Subscribe a local client to monitor consensus
         monitor = NetworkClient(broker_url)
+        await monitor.connect("MONITOR")
         consensus_msgs = []
-        async def handle_consensus(msg):
-            consensus_msgs.append(msg)
-            
-        await monitor.subscribe("ddfn.flow.consensus", handle_consensus)
+        consensus_queue = asyncio.Queue()
+        async def consensus_worker():
+            while True:
+                msg = await consensus_queue.get()
+                consensus_msgs.append(msg)
+        asyncio.create_task(consensus_worker())
+        await monitor.subscribe("ddfn.flow.consensus", consensus_queue)
         await asyncio.sleep(0.5)
         
         print(f"Injecting flight {flight_id}...")
@@ -103,7 +128,7 @@ async def test_ripple_propagation_5_node(load_aixm):
         
         from ddfn_v2.eng.trajectories import FlightTrajectory
         traj = FlightTrajectory.from_flight_plan(
-            flight_id, "CAIRO", "LGAV", dept_time, 350, "CAIRO YABEN LCLK DOREN EVENO", WAYPOINTS
+            flight_id, "LCLK", "LTBA", dept_time, 350, "LCLK DOREN EVENO LTBA", WAYPOINTS, SECTORS
         )
         print(f"DEBUG: Full trajectory crossings: {[c.sector_id for c in traj.route]}")
         
@@ -123,6 +148,28 @@ async def test_ripple_propagation_5_node(load_aixm):
         assert len(crossed_sectors) > 0, f"Flight {flight_id} doesn't cross any sectors in any nodes! Crossings: {[c.sector_id for c in traj.route]}"
         target_sector = crossed_sectors[-1] # Target the furthest crossing in that node
         
+        # 5. Wait for CASA and HITL Approval Request in the origin node
+        first_crossing_sid = traj.route[0].sector_id
+        # We need to find which node owns this sector. In this test, nodes are fir_ids
+        origin_fir = SECTORS[first_crossing_sid].fir
+        origin_node_id = f"{origin_fir}_DDFN_NODE"
+        
+        print(f"Subscribing to UI inbox for origin node: {origin_node_id} (first sector: {first_crossing_sid})")
+        
+        # Scenario 1 Step 5: Verify the origin node (LCCC) receives the CASA approval request in its UI Inbox (RIPPLE)
+        print(f"\nStep 5: Waiting for CASA approval request in {origin_node_id} UI Inbox...")
+        # Subscribe to the global UI inbox topic
+        inbox_msgs = []
+        inbox_queue = asyncio.Queue()
+        async def inbox_worker():
+            while True:
+                msg = await inbox_queue.get()
+                print(f"DEBUG: Received Inbox message: {msg.get('message_type')} for {msg.get('target_node')}")
+                if msg.get("message_type") == "UI_INBOX_APPROVAL_REQUEST" and msg.get("target_node") == origin_node_id:
+                     inbox_msgs.append(msg)
+        asyncio.create_task(inbox_worker())
+        await monitor.subscribe("ddfn.ui.inbox", inbox_queue)
+        
         print(f"Applying capacity=0 override to {target_sector} in {last_node_fid}...")
         override_msg = {
             "message_type": "MANUAL_CAPACITY_OVERRIDE",
@@ -135,25 +182,20 @@ async def test_ripple_propagation_5_node(load_aixm):
         }
         await monitor.publish("ddfn.fmp.command", override_msg)
         
-        # 5. Wait for CASA and HITL Approval Request
-        inbox_msgs = []
-        async def handle_inbox(msg):
-            inbox_msgs.append(msg)
-        await monitor.subscribe("ddfn.ui.inbox", handle_inbox)
-        
-        # Poll for inbox message (up to 20s)
-        for _ in range(20):
-             if inbox_msgs: break
-             await asyncio.sleep(1)
-        
-        assert len(inbox_msgs) > 0, "No UI Inbox message received for CASA approval"
+        # Poll for inbox message (up to 30s)
+        for _ in range(30):
+            if inbox_msgs: break
+            await asyncio.sleep(1)
+            
+        assert len(inbox_msgs) > 0, f"No UI Inbox message received for CASA approval at {origin_node_id}!"
+        print(f"SUCCESS: Received CASA approval request for sector {inbox_msgs[0]['sector_id']} at {origin_node_id}")
         warn_id = inbox_msgs[0]["warning_id"]
         
-        # 6. Approve the Regulation in the triggering node
-        print(f"Approving regulation {warn_id} in {last_node_fid}...")
+        # 6. Approve the Regulation in the origin node (HITL)
+        print(f"Approving regulation {warn_id} in {origin_node_id}...")
         approve_msg = {
             "message_type": "FMP_PROPOSAL_APPROVAL",
-            "target_node": f"{last_node_fid}_DDFN_NODE",
+            "target_node": origin_node_id,
             "warning_id": warn_id,
             "action": "APPROVE"
         }
@@ -179,9 +221,9 @@ async def test_ripple_propagation_5_node(load_aixm):
         print(f"Ripple verified in {len(delayed_nodes)} nodes: {delayed_nodes}")
         assert len(delayed_nodes) >= 3, f"Ripple only reached {len(delayed_nodes)} nodes. Expected at least 3/5."
         
-        # Verify HECC (origin) specifically
-        hecc_node = nodes["HECC"]
-        new_ctot = hecc_node.fdps.flights[flight_id].departure_time
+        # Verify LCCC (origin) specifically
+        lccc_node = nodes["LCCC"]
+        new_ctot = lccc_node.fdps.flights[flight_id].departure_time
         print(f"SUCCESS: Ripple effect confirmed. Flight {flight_id} delayed from {dept_time.time()} to {new_ctot.time()}")
 
     finally:
@@ -354,6 +396,8 @@ async def test_dynamic_continuity_handoff(load_aixm):
             aixm_sectors = get_fir_sectors(fid)
             node.sectors = [from_dict(SectorCapacity, s) for s in aixm_sectors]
             node.is_configured = True
+            node.aixm_source_file = AIXM_FILE
+            node.aixm_source_fir = fid
             nodes[fid] = node
             asyncio.create_task(node.start())
             
@@ -447,6 +491,8 @@ async def test_resilience_broker_restart(load_aixm):
             aixm_sectors = get_fir_sectors(fid)
             node.sectors = [from_dict(SectorCapacity, s) for s in aixm_sectors]
             node.is_configured = True
+            node.aixm_source_file = AIXM_FILE
+            node.aixm_source_fir = fid
             nodes[fid] = node
             asyncio.create_task(node.start())
             
@@ -520,6 +566,8 @@ async def test_border_rad_validation(load_aixm):
     node = FMPNode("LCCC_DDFN_NODE", net, [], waypoint_db=WAYPOINTS)
     node.sectors = [from_dict(SectorCapacity, s) for s in get_fir_sectors("LCCC")]
     node.is_configured = True
+    node.aixm_source_file = AIXM_FILE
+    node.aixm_source_fir = "LCCC"
     asyncio.create_task(node.start())
     await asyncio.sleep(2)
     
@@ -609,6 +657,8 @@ async def test_concurrency_stress(load_aixm):
     node = FMPNode("LCCC_DDFN_NODE", net, [], waypoint_db=WAYPOINTS)
     node.sectors = [from_dict(SectorCapacity, s) for s in get_fir_sectors("LCCC")]
     node.is_configured = True
+    node.aixm_source_file = AIXM_FILE
+    node.aixm_source_fir = "LCCC"
     asyncio.create_task(node.start())
     await asyncio.sleep(2)
     

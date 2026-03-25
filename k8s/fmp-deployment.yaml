@@ -1,0 +1,189 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fmp-lccc
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: fmp
+    app.kubernetes.io/instance: fmp-lccc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fmp-lccc
+  template:
+    metadata:
+      labels:
+        app: fmp-lccc
+        app.kubernetes.io/component: fmp
+    spec:
+      containers:
+      - name: fmp
+        image: ddfn-v2:latest
+        imagePullPolicy: IfNotPresent
+        command:
+          - "python"
+          - "-m"
+          - "ddfn_v2.services.fmp_service"
+          - "--port"
+          - "8013"
+          - "--broker"
+          - "ws://broker:8001/ws"
+        ports:
+        - containerPort: 8013
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: ddfn-config
+        - secretRef:
+            name: ddfn-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8013
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8013
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: data
+          mountPath: /app/data
+        - name: aixm
+          mountPath: /app/AIXM
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: data
+        emptyDir: {}
+      - name: aixm
+        configMap:
+          name: ddfn-aixm-data
+          optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fmp-lccc
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: fmp
+spec:
+  selector:
+    app: fmp-lccc
+  ports:
+  - port: 8013
+    targetPort: 8013
+    name: http
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fmp-lfff
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: fmp
+    app.kubernetes.io/instance: fmp-lfff
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fmp-lfff
+  template:
+    metadata:
+      labels:
+        app: fmp-lfff
+        app.kubernetes.io/component: fmp
+    spec:
+      containers:
+      - name: fmp
+        image: ddfn-v2:latest
+        imagePullPolicy: IfNotPresent
+        command:
+          - "python"
+          - "-m"
+          - "ddfn_v2.services.fmp_service"
+          - "--port"
+          - "8010"
+          - "--broker"
+          - "ws://broker:8001/ws"
+        ports:
+        - containerPort: 8010
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: ddfn-config
+        - secretRef:
+            name: ddfn-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8010
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8010
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: data
+          mountPath: /app/data
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fmp-lfff
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: fmp
+spec:
+  selector:
+    app: fmp-lfff
+  ports:
+  - port: 8010
+    targetPort: 8010
+    name: http
+  type: ClusterIP

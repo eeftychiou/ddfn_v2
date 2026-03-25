@@ -35,8 +35,14 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Set, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 
+from fastapi import FastAPI, Security
+from fastapi.responses import JSONResponse
+import uvicorn
+
 from ddfn_v2.core.node import DDFN_Node
+from ddfn_v2.core.auth import verify_api_key
 from ddfn_v2.core.network import NetworkClient
+from ddfn_v2.core.config import config
 from ddfn_v2.eng.airspace import AIRPORT_DEFAULTS
 from ddfn_v2.services import schedule
 from ddfn_v2.services.rad_validator import VALIDATOR as RAD_VALIDATOR
@@ -90,13 +96,13 @@ class AirportNode(DDFN_Node):
         self.adjacent_sector = adjacent_sector
         self.upstream_sector = upstream_sector
 
-        defaults = AIRPORT_DEFAULTS.get(icao, {"aar": 30, "adr": 28})
+        defaults = AIRPORT_DEFAULTS.get(icao, {"aar": config.AIRPORT_DEFAULT_AAR, "adr": config.AIRPORT_DEFAULT_ADR})
         self.status = AirportStatus(
             icao=icao,
             aar=defaults["aar"],
             adr=defaults["adr"],
-            inbound_demand=int(defaults["aar"] * 0.85),   # 85% load initially
-            outbound_demand=int(defaults["adr"] * 0.80),
+            inbound_demand=int(defaults["aar"] * config.AIRPORT_INBOUND_LOAD_FACTOR),   # Configurable load initially
+            outbound_demand=int(defaults["adr"] * config.AIRPORT_OUTBOUND_LOAD_FACTOR),
         )
 
         self.fdps = fdps # Use the passed-in FDPS
@@ -243,7 +249,7 @@ class AirportNode(DDFN_Node):
 
         # Simulate calculating which departures to delay
         actual_offer = random.randint(max(1, max_gdp // 2), max_gdp)
-        await asyncio.sleep(0.5)  # processing time
+        await asyncio.sleep(config.AIRPORT_CLEARINGHOUSE_WAIT)  # Clearinghouse wait time
 
         actions = []
         for i in range(actual_offer):
@@ -385,7 +391,7 @@ class AirportNode(DDFN_Node):
         slot_data = msg.get("slot_table", [])
         
         if slot_data:
-            from models import SlotDetails
+            from ddfn_v2.core.models import SlotDetails
             slots = [SlotDetails(**s) if isinstance(s, dict) else s for s in slot_data]
             # Keep only slots originating here
             my_slots = [s for s in slots if s.origin == self.icao]
@@ -460,6 +466,7 @@ async def main():
     parser.add_argument("--aar", type=int, default=None, help="Override AAR")
     parser.add_argument("--inbound-demand", type=int, default=None)
     parser.add_argument("--aixm", help="Path to AIXM 4.5 XML file")
+    parser.add_argument("--port", type=int, default=8000, help="Port for the HTTP server (default: 8000)")
     args = parser.parse_args()
 
     if args.aixm:
@@ -497,9 +504,40 @@ async def main():
     if args.inbound_demand:
         node.status.inbound_demand = args.inbound_demand
 
-    await node.start()
-    while True:
-        await asyncio.sleep(3600)
+    # Create FastAPI app for health checks and API
+    app = FastAPI(title=f"Airport Node - {args.icao}")
+
+    @app.get("/health")
+    async def health_check():
+        """
+        Health check endpoint for Airport node.
+        """
+        return {
+            "status": "healthy",
+            "service": "airport",
+            "icao": node.icao,
+            "aar": node.status.aar,
+            "adr": node.status.adr,
+            "flights_tracked": len(node.fdps.flights),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    @app.post("/api/aar/override", dependencies=[Security(verify_api_key)])
+    async def api_aar_override(data: dict):
+        """Override AAR for this airport."""
+        new_aar = data.get("aar", node.status.aar)
+        async with node._state_lock:
+            node.status.aar = int(new_aar)
+        return {"status": "success", "aar": node.status.aar}
+
+    # Start both the node and the web server
+    config = uvicorn.Config(app, host="127.0.0.1", port=args.port, log_level="info")
+    server = uvicorn.Server(config)
+    
+    await asyncio.gather(
+        node.start(),
+        server.serve()
+    )
 
 
 if __name__ == "__main__":

@@ -59,6 +59,7 @@ def fmp_server(broker_server):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
     env["DDFN_CONFIG_DIR"] = TEST_CONFIG_DIR
+    env["DDFN_API_KEY"] = "fmp-config-flow-test-key"
     
     os.makedirs(os.path.join("test_output", "logs"), exist_ok=True)
     log_path = os.path.join("test_output", "logs", f"server_{node_id}.log")
@@ -91,7 +92,7 @@ def fmp_server(broker_server):
             print(f"SERVER LOGS:\n{f.read()}")
         pytest.fail(f"FMP Server failed to start on port {port}")
         
-    yield {"node_id": node_id, "port": port, "base_url": f"http://127.0.0.1:{port}", "proc": proc}
+    yield {"node_id": node_id, "port": port, "base_url": f"http://127.0.0.1:{port}", "proc": proc, "api_key": "fmp-config-flow-test-key"}
     
     proc.terminate()
     try:
@@ -127,7 +128,8 @@ def test_unconfigured_startup_and_flow(fmp_server):
         "config_name": config_name
     }
     
-    resp = requests.post(f"{base_url}/api/setup/configure", json=setup_payload)
+    headers = {"X-API-Key": fmp_server["api_key"]}
+    resp = requests.post(f"{base_url}/api/setup/configure", json=setup_payload, headers=headers)
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
     

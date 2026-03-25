@@ -59,7 +59,7 @@ class SetupConfigurationRequest(BaseModel):
     """Request model for /api/setup/configure endpoint."""
     file_path: str = Field(..., description="Path to the AIXM XML file")
     fir_id: str = Field(..., description="FIR identifier (e.g., LGGG, EGTT)")
-    window_size: int = Field(default=120, description="Measurement window size in minutes (15-480)")
+    window_size: int = Field(default=120, description="Measurement window size in minutes (1-480)")
     config_name: Optional[str] = Field(default=None, description="Name for this configuration")
 
     @field_validator('file_path')
@@ -90,7 +90,11 @@ class ApplyAIXMConfigRequest(BaseModel):
     file_path: str = Field(..., description="Path to the AIXM XML file")
     fir_id: str = Field(..., description="FIR identifier")
     sectors: List[dict] = Field(..., description="List of selected sectors with id, fl_lower, fl_upper")
+    airports: List[dict] = Field(default=[], description="List of selected airports with id, name, lat, lon")
     config_name: Optional[str] = Field(default=None, description="Name for this configuration")
+    window_size: int = Field(default=60, description="Measurement window size in minutes (1-480)")
+    baseline_capacity: int = Field(default=40, description="Baseline capacity for all sectors/airports")
+
 
     @field_validator('file_path')
     @classmethod
@@ -237,7 +241,7 @@ class MergeSectorsRequest(BaseModel):
 class SetWindowRequest(BaseModel):
     """Request model for /api/sectors/window endpoint."""
     node_id: str = Field(..., description="Target node ID")
-    measure_window: int = Field(..., description="Measurement window in minutes")
+    measure_window: int = Field(..., description="Measurement window in minutes (1-480)")
 
     @field_validator('node_id')
     @classmethod

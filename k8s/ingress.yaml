@@ -1,0 +1,73 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ddfn-ingress
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ddfn.local
+    http:
+      paths:
+      - path: /broker
+        pathType: Prefix
+        backend:
+          service:
+            name: broker
+            port:
+              number: 8001
+      - path: /fmp-lccc
+        pathType: Prefix
+        backend:
+          service:
+            name: fmp-lccc
+            port:
+              number: 8013
+      - path: /fmp-lfff
+        pathType: Prefix
+        backend:
+          service:
+            name: fmp-lfff
+            port:
+              number: 8010
+      - path: /airport-lfpg
+        pathType: Prefix
+        backend:
+          service:
+            name: airport-lfpg
+            port:
+              number: 8020
+      - path: /sim
+        pathType: Prefix
+        backend:
+          service:
+            name: sim-manager
+            port:
+              number: 8050
+---
+# Alternative: LoadBalancer service for direct access
+apiVersion: v1
+kind: Service
+metadata:
+  name: ddfn-lb
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: loadbalancer
+spec:
+  type: LoadBalancer
+  selector:
+    app: broker
+  ports:
+  - port: 8001
+    targetPort: 8001
+    name: broker

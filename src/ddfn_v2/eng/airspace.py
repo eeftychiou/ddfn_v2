@@ -31,6 +31,14 @@ WAYPOINTS: Dict[str, Waypoint] = {}
 # 2. Airspace Sector Geometry
 # ---------------------------------------------------------------------------
 
+SECTORS: Dict[str, 'SectorGeometry'] = {}
+
+# ---------------------------------------------------------------------------
+# 3. Airways / Routes
+# ---------------------------------------------------------------------------
+
+AIRWAYS: Dict[str, List[str]] = {}
+
 class SectorGeometry(BaseModel):
     """
     A simplified ATC sector defined as a 2D convex lat/lon polygon.

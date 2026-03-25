@@ -1,6 +1,6 @@
 import json
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime, timezone
 
 # --- Data Models reflecting ddfn_data_models.md ---
@@ -19,6 +19,7 @@ class SectorCapacity(BaseModel):
     base_sectors: List[str] = Field(default_factory=list)
     active_capacity: Optional[int] = None # The capacity currently taking effect (after overrides)
     constraint_reason: str = ""
+    polygon: List[Tuple[float, float]] = Field(default_factory=list) # [lat, lon] pairs
 
 class CapacityStateBroadcast(BaseModel):
     node_id: str

@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  broker:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      - DDFN_LOGS_DIR=/app/logs
+      - DDFN_DATA_DIR=/app/data
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    command: python -m ddfn_v2.core.broker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  fmp-lccc:
+    build: .
+    ports:
+      - "8013:8013"
+    environment:
+      - DDFN_BROKER_HOST=broker
+      - DDFN_BROKER_PORT=8001
+    depends_on:
+      broker:
+        condition: service_healthy
+    command: python -m ddfn_v2.services.fmp_service --port 8013 --broker ws://broker:8001/ws
+
+  fmp-lfff:
+    build: .
+    ports:
+      - "8010:8010"
+    environment:
+      - DDFN_BROKER_HOST=broker
+      - DDFN_BROKER_PORT=8001
+    depends_on:
+      broker:
+        condition: service_healthy
+    command: python -m ddfn_v2.services.fmp_service --port 8010 --broker ws://broker:8001/ws
+
+  airport-lfpg:
+    build: .
+    environment:
+      - DDFN_BROKER_HOST=broker
+      - DDFN_BROKER_PORT=8001
+    depends_on:
+      broker:
+        condition: service_healthy
+    command: python -m ddfn_v2.services.airport_service LFPG --broker ws://broker:8001/ws
+
+  sim-manager:
+    build: .
+    ports:
+      - "8050:8050"
+    environment:
+      - DDFN_BROKER_HOST=broker
+      - DDFN_BROKER_PORT=8001
+    depends_on:
+      broker:
+        condition: service_healthy
+    command: python -m ddfn_v2.services.sim_manager --port 8050 --broker ws://broker:8001/ws

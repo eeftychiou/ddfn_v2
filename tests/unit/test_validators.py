@@ -400,6 +400,8 @@ class TestWindowSizeValidation:
 
     def test_valid_window_sizes(self):
         """Test valid window sizes."""
+        assert validate_window_size(1) == 1
+        assert validate_window_size(5) == 5
         assert validate_window_size(15) == 15
         assert validate_window_size(60) == 60
         assert validate_window_size(120) == 120
@@ -410,13 +412,13 @@ class TestWindowSizeValidation:
         assert validate_window_size("120") == 120
 
     def test_window_size_too_small(self):
-        """Test that window sizes below 15 are rejected."""
-        with pytest.raises(ValueError, match="between 15 and 480"):
-            validate_window_size(14)
+        """Test that window sizes below 1 are rejected."""
+        with pytest.raises(ValueError, match="between 1 and 480"):
+            validate_window_size(0)
 
     def test_window_size_too_large(self):
         """Test that window sizes above 480 are rejected."""
-        with pytest.raises(ValueError, match="between 15 and 480"):
+        with pytest.raises(ValueError, match="between 1 and 480"):
             validate_window_size(481)
 
     def test_window_size_invalid_string(self):

@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ddfn-v2
+
+namePrefix: ddfn-
+
+commonLabels:
+  app.kubernetes.io/name: ddfn-v2
+  app.kubernetes.io/version: "2.0.0"
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - broker-deployment.yaml
+  - fmp-deployment.yaml
+  - airport-deployment.yaml
+  - sim-manager-deployment.yaml
+  - ingress.yaml
+
+images:
+  - name: ddfn-v2
+    newTag: latest
+
+# Optional: Add replicas for production
+replicas:
+  - name: broker
+    count: 1
+  - name: fmp-lccc
+    count: 1
+  - name: fmp-lfff
+    count: 1
+  - name: airport-lfpg
+    count: 1
+  - name: sim-manager
+    count: 1

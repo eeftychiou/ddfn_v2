@@ -18,6 +18,7 @@ Replaces the PoC's hardcoded ETO values with real geometric computation:
 from __future__ import annotations
 import math
 from typing import List, Dict, Optional, Tuple
+import ddfn_v2.eng.airspace as airspace_mod
 from ddfn_v2.eng.airspace import WAYPOINTS, SECTORS, AIRWAYS, Waypoint, SectorGeometry
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
@@ -64,7 +65,8 @@ class FlightTrajectory(BaseModel):
         departure_time: datetime,
         cruise_fl: int,
         route_string: str,
-        waypoint_db: Optional[Dict[str, Waypoint]] = None
+        waypoint_db: Optional[Dict[str, Waypoint]] = None,
+        sector_db: Optional[Dict[str, SectorGeometry]] = None
     ) -> "FlightTrajectory":
         """
         Factory — parse a simplified ICAO route string and compute the full 4D trajectory.
@@ -90,7 +92,7 @@ class FlightTrajectory(BaseModel):
         # Default altitude profile is just cruise_fl for all waypoints
         alts = [cruise_fl] * len(flt.waypoints)
         
-        crossings, exit_time = TrajectorySolver.compute_sector_etos(flt.waypoints, departure_time, tas, altitudes=alts)
+        crossings, exit_time = TrajectorySolver.compute_sector_etos(flt.waypoints, departure_time, tas, sector_db=sector_db, altitudes=alts)
         flt.route = crossings
         flt.exit_time = exit_time
         if exit_idx is not None and 0 <= exit_idx < len(wpts):
@@ -144,16 +146,21 @@ def _parse_route(origin: str, route_string: str, destination: str, db: Dict[str,
     tokens = route_string.upper().split()
     
     # Departure
+    print(f"DEBUG: _parse_route - origin={repr(origin)} ID={id(db)} count={len(db)} LCLK_in_db={'LCLK' in db}")
     if origin in db:
         result.append(db[origin])
+    else:
+        print(f"DEBUG: _parse_route - origin {repr(origin)} NOT in db! Keys sample: {list(db.keys())[:5]}")
 
     for i, token in enumerate(tokens):
         if token in ("DCT", "N/A", ""):
             continue
+        print(f"DEBUG: _parse_route checking token={repr(token)} in_db={token in db}")
         if token in db:
             if not result or result[-1].ident != token:
                 result.append(db[token])
         else:
+            print(f"DEBUG: _parse_route - token {repr(token)} NOT in db! Keys sample: {list(db.keys())[:5]}")
             # First unknown token = EXIT POINT of this FIR's knowledge
             exit_idx = len(result) - 1
             rem_route = " ".join(tokens[i:])
@@ -222,8 +229,8 @@ def _segment_sector_crossings(
     Also respects sector fl_lower and fl_upper if altitudes are provided.
     """
     def is_inside(pt: Tuple[float, float], t: float) -> bool:
-        inside = _point_in_polygon(pt[0], pt[1], sector.polygon)
-        if not inside:
+        inside_poly = _point_in_polygon(pt[0], pt[1], sector.polygon)
+        if not inside_poly:
             return False
             
         # Check altitude if available
@@ -260,13 +267,16 @@ def _segment_sector_crossings(
 
     # If we entered but never exited (stayed inside), exit at p2
     if t_exit is None and t_entry is not None:
-        if is_inside(p2, 1.0):
+        is_p2_in = is_inside(p2, 1.0)
+        # print(f"DEBUG: Sector {sector.sector_id} - t_entry={t_entry}, t_exit=None, is_p2_in={is_p2_in}")
+        if is_p2_in:
             t_exit = 1.0
             exit_pt = p2
         else:
             return None  # transient hit, discard
 
     if t_entry is not None and t_exit is not None:
+        # print(f"DEBUG: Crossing found: {sector.sector_id} ({t_entry}, {t_exit})")
         return (t_entry, t_exit, entry_pt, exit_pt)
     return None
 
@@ -278,10 +288,11 @@ def _get_bbox(points: List[Tuple[float, float]]) -> Tuple[float, float, float, f
 
 def _bbox_overlap(bbox1: Tuple[float, float, float, float], bbox2: Tuple[float, float, float, float], buffer: float = 0.5) -> bool:
     """Returns True if two bounding boxes overlap, with an optional buffer (degrees)."""
-    return not (bbox1[2] + buffer < bbox2[0] - buffer or
-                bbox1[0] - buffer > bbox2[2] + buffer or
-                bbox1[3] + buffer < bbox2[1] - buffer or
-                bbox1[1] - buffer > bbox2[3] + buffer)
+    c1 = (bbox1[2] + buffer < bbox2[0] - buffer)
+    c2 = (bbox1[0] - buffer > bbox2[2] + buffer)
+    c3 = (bbox1[3] + buffer < bbox2[1] - buffer)
+    c4 = (bbox1[1] - buffer > bbox2[3] + buffer)
+    return not (c1 or c2 or c3 or c4)
 
 
 # ---------------------------------------------------------------------------
@@ -303,23 +314,29 @@ class TrajectorySolver:
         sector_db: Optional[Dict[str, SectorGeometry]] = None,
         altitudes: Optional[List[int]] = None
     ) -> Tuple[List[SectorEntry], Optional[datetime]]:
-        """
-        Returns (List[SectorEntry], exit_time)
-        """
+        print(f"DEBUG: Entering compute_sector_etos with {len(waypoints)} waypoints.")
         if len(waypoints) < 2:
+            print("DEBUG: compute_sector_etos - Not enough waypoints!")
             return [], None
 
         db = sector_db if sector_db is not None else SECTORS
+        print(f"DEBUG: compute_sector_etos - total sectors in db: {len(db)}, db_ID: {id(db)}, SECTORS_ID: {id(SECTORS)}")
         entries: Dict[str, SectorEntry] = {}  # sector_id -> first crossing
         elapsed_seconds = 0.0
         
         # Performance: Spatial filtering
         traj_bbox = _get_bbox(waypoints)
+        print(f"DEBUG: traj_bbox: {traj_bbox}")
         candidate_sectors = []
-        for sid, sgeo in db.items():
+        for i, (sid, sgeo) in enumerate(db.items()):
             s_bbox = _get_bbox(sgeo.polygon)
-            if _bbox_overlap(traj_bbox, s_bbox):
+            overlap = _bbox_overlap(traj_bbox, s_bbox)
+            if i < 3:
+                print(f"DEBUG: sector {sid} bbox: {s_bbox}, overlap: {overlap}")
+            if overlap:
                 candidate_sectors.append((sid, sgeo))
+        
+        # print(f"DEBUG: compute_sector_etos - candidate sectors: {len(candidate_sectors)}")
 
         # candidate_sectors matches logic
 

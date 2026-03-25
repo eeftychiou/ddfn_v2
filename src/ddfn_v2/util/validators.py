@@ -22,7 +22,7 @@ from typing_extensions import Annotated
 # =============================================================================
 
 # Allowed base directories for file operations
-DEFAULT_ALLOWED_BASE_DIRS: List[str] = ["uploads", "data", "node_configs"]
+DEFAULT_ALLOWED_BASE_DIRS: List[str] = ["uploads", "data", "node_configs", "AIXM"]
 
 # Regex patterns for validation
 SECTOR_ID_PATTERN = re.compile(r'^[A-Z0-9_-]+$')
@@ -288,8 +288,8 @@ def validate_window_size(minutes: int) -> int:
         except (ValueError, TypeError):
             raise ValueError("Window size must be an integer")
 
-    if minutes < 15 or minutes > 480:
-        raise ValueError("Window size must be between 15 and 480 minutes (8 hours)")
+    if minutes < 1 or minutes > 480:
+        raise ValueError("Window size must be between 1 and 480 minutes (8 hours)")
 
     return minutes
 

@@ -21,6 +21,7 @@ class RADRule:
     end_time: Optional[str] = None   # HH:MM (UTC)
     forbidden_origins: Optional[List[str]] = None
     forbidden_destinations: Optional[List[str]] = None
+    allowed_operators: Optional[List[str]] = None
     active: bool = True  # Added for dynamic toggling
 
 class RADValidator:
@@ -115,8 +116,15 @@ class RADValidator:
                 elif rule.start_time is not None or rule.end_time is not None:
                     is_time_match = False
 
+                is_op_match = True
+                if rule.allowed_operators is not None:
+                    # If this is an allowed operator, it's NOT a match for violation
+                    operator = trajectory.flight_id[:3].upper() if len(trajectory.flight_id) >= 3 else ""
+                    if operator in [op.upper() for op in rule.allowed_operators]:
+                        is_op_match = False
+
                 # 4. Global violation check: if all active constraints match
-                if is_fl_match and is_od_match and is_time_match:
+                if is_fl_match and is_od_match and is_time_match and is_op_match:
                      return False, f"RAD Violation {rule.rule_id}: {rule.description}"
 
         return True, None

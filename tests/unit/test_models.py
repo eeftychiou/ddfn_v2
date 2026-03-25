@@ -31,6 +31,25 @@ class TestModels(unittest.TestCase):
         self.assertTrue(sc_back.is_virtual)
         self.assertEqual(sc_back.base_sectors, ["LFFF1A_1", "LFFF1A_2"])
 
+    def test_sector_capacity_with_polygon(self):
+        polygon = [(34.5, 32.1), (34.6, 32.2), (34.7, 32.1)]
+        sc = SectorCapacity(
+            sector_id="LCCC001",
+            configuration="DEFAULT",
+            declared_capacity_per_hour=40,
+            current_demand_per_hour=0,
+            status="GREEN",
+            polygon=polygon
+        )
+        # Serialization (Pydantic v2 to_json uses lists for tuples)
+        data = json.loads(to_json(sc))
+        self.assertEqual(data["polygon"], [[34.5, 32.1], [34.6, 32.2], [34.7, 32.1]])
+        
+        # Deserialization
+        sc_back = from_dict(SectorCapacity, data)
+        self.assertEqual(len(sc_back.polygon), 3)
+        self.assertEqual(sc_back.polygon[0], (34.5, 32.1))
+
     def test_nested_ctot_proposal(self):
         slot = SlotDetails(
             flight_id="AFR123",
@@ -97,7 +116,6 @@ class TestModels(unittest.TestCase):
         }
         sc = from_dict(SectorCapacity, data_with_fir)
         self.assertEqual(sc.sector_id, "LFFF1A")
-        # Ensure it works without crashing
 
 if __name__ == '__main__':
     unittest.main()

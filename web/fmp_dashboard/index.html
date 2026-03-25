@@ -17,6 +17,7 @@
     <script>
         // Injected by the backend Uvicorn server to hard-bind this GUI instance to the serving Node
         window.ACTIVE_NODE_ID = null;
+        window.API_KEY = null;
     </script>
 </head>
 
@@ -52,10 +53,21 @@
             <div id="tab-overview" class="tab-pane active">
                 <div class="overview-grid">
                     <!-- Top: Map/Sector Status -->
-                    <section class="glass-panel grid-map">
-                        <h2>Sector Map Overview</h2>
-                        <div id="nodes-container" class="nodes-container">
-                            <!-- Injected dynamically via JS based on Workspace Settings -->
+                    <section class="glass-panel grid-map" style="display: flex; flex-direction: column;">
+                        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h2 style="margin: 0;">Sector Map Overview</h2>
+                            <div class="map-controls" style="display: flex; gap: 10px;">
+                                <span class="badge" id="map-sector-count">0 Sectors</span>
+                            </div>
+                        </div>
+                        <div class="overview-map-layout" style="display: flex; flex: 1; gap: 15px; min-height: 400px; overflow: hidden;">
+                            <div id="overview-map" style="flex: 2; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2);">
+                                <!-- Leaflet map for Overview -->
+                            </div>
+                            <div id="nodes-container" class="nodes-container" style="flex: 1; overflow-y: auto; padding-right: 5px;">
+                                <!-- Injected dynamically via JS based on actual responsibility -->
+                                <div style="text-align: center; color: var(--text-sec); padding: 20px;">Initializing sectors...</div>
+                            </div>
                         </div>
                     </section>
 
@@ -247,35 +259,46 @@
                                 <option value="">Load AIXM first...</option>
                             </select>
                         </div>
+                        <div class="config-input-group" style="margin-top: 15px;">
+                            <label for="config-window-size">Measurement Window (min):</label>
+                            <input type="number" id="config-window-size" value="120" min="1" max="480">
+                        </div>
 
-                        <div id="config-sector-picker" style="margin-top: 20px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <label>Available Sectors</label>
-                                <button id="btn-select-all-sectors" class="btn-secondary" style="font-size: 0.7rem; padding: 2px 6px; margin: 0;">Select All</button>
+                        <div class="config-input-group" style="margin-top: 10px;">
+                            <label for="config-baseline-capacity">Baseline Capacity (flt/hr):</label>
+                            <input type="number" id="config-baseline-capacity" value="40" min="1" max="200">
+                        </div>
+
+                        <div class="config-input-group" style="margin-top: 10px;">
+                            <label for="config-node-name">Configuration Name (Save As):</label>
+                            <input type="text" id="config-node-name" placeholder="e.g. LCCC West">
+                        </div>
+
+                        <div class="config-selection-container">
+                            <div class="config-list-box">
+                                <div class="config-list-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span>Available Sectors</span>
+                                    <label style="font-size: 0.7rem; font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 4px; color: var(--text-sec);">
+                                        <input type="checkbox" id="check-all-sectors" style="width: 12px; height: 12px;"> All
+                                    </label>
+                                </div>
+                                <div id="config-sector-list" class="config-item-list">
+                                    <div class="placeholder-text">Load AIXM to see sectors</div>
+                                </div>
                             </div>
-                            <div id="config-sector-list" class="checkbox-grid" style="overflow-y: auto; flex: 1; padding: 5px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                                <!-- Sectors injected here -->
+
+                            <div class="config-list-box">
+                                <div class="config-list-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span>Available Airports</span>
+                                    <label style="font-size: 0.7rem; font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 4px; color: var(--text-sec);">
+                                        <input type="checkbox" id="check-all-airports" style="width: 12px; height: 12px;"> All
+                                    </label>
+                                </div>
+                                <div id="config-airport-list" class="config-item-list">
+                                    <div class="placeholder-text">Load AIXM to see airports</div>
+                                </div>
                             </div>
                         </div>
-
-                        <div class="input-group" style="margin-top: 15px;">
-                            <label>Sliding Measurement Window</label>
-                            <select id="config-window-size" class="dropdown">
-                                <option value="5">5 Minutes</option>
-                                <option value="15">15 Minutes</option>
-                                <option value="30">30 Minutes</option>
-                                <option value="45">45 Minutes</option>
-                                <option value="60" selected>1 Hour (Default)</option>
-                                <option value="90">1.5 Hours</option>
-                                <option value="120">2 Hours</option>
-                            </select>
-                        </div>
-
-                        <div class="input-group" style="margin-top: 15px;">
-                            <label>Node Configuration Name</label>
-                            <input type="text" id="config-node-name" placeholder="E.g. LCCC_Upper_West" style="width: 100%;">
-                        </div>
-
                         <div style="display: flex; gap: 10px; margin-top: 20px;">
                             <button id="btn-save-airspace-config" class="primary-btn" style="flex: 2; margin: 0;">Save & Apply Config</button>
                             <button id="btn-delete-airspace-config" class="secondary-btn" style="flex: 1; margin: 0; color: var(--danger); border-color: var(--danger);">Delete</button>
@@ -366,7 +389,11 @@
                     <option value="5">5 Minutes</option>
                     <option value="15">15 Minutes</option>
                     <option value="30">30 Minutes</option>
-                    <option value="60" selected>60 Minutes</option>
+                    <option value="45">45 Minutes</option>
+                    <option value="60" selected>1 Hour</option>
+                    <option value="120">2 Hours</option>
+                    <option value="180">3 Hours</option>
+                    <option value="240">4 Hours</option>
                 </select>
             </div>
 
@@ -490,6 +517,10 @@
                 <div class="input-group" style="margin-top: 15px;">
                     <label>Flow Capacity Window (Minutes)</label>
                     <select id="setup-window-size" class="dropdown">
+                        <option value="5">5 Minutes</option>
+                        <option value="15">15 Minutes</option>
+                        <option value="30">30 Minutes</option>
+                        <option value="45">45 Minutes</option>
                         <option value="60">1 Hour</option>
                         <option value="120" selected>2 Hours (Standard)</option>
                         <option value="240">4 Hours</option>
@@ -504,6 +535,7 @@
         </div>
     </div>
 
+    <!-- API_KEY_INJECTION -->
     <script src="app.js"></script>
 </body>
 

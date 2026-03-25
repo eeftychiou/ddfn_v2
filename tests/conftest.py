@@ -161,8 +161,11 @@ def event_loop():
 
 
 @pytest.fixture(autouse=True)
-def reset_global_state():
-    """Reset global state before each test to ensure isolation."""
+def reset_global_state(request):
+    """Reset global state before each test to ensure isolation, except for integration tests."""
+    if "integration" in request.node.nodeid:
+        yield
+        return
     # Save original state
     original_waypoints = WAYPOINTS.copy()
     original_sectors = SECTORS.copy()

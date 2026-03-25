@@ -37,9 +37,15 @@ from ddfn_v2.core.request_models import (
     SuccessResponse, ErrorResponse, ConfigurationListResponse,
     SetupStatusResponse, AIXMSourceResponse, AIXMUploadResponse
 )
-from ddfn_v2.util.validators import validate_file_path_for_aixm, ValidationError
+from ddfn_v2.util.validators import validate_file_path_for_aixm
+from pydantic import ValidationError
+from ddfn_v2.core.auth import verify_api_key
+from fastapi import Security
+from ddfn_v2.core.config import config
+import aiofiles
+import aiofiles.os
 
-CONFIG_DIR = os.environ.get("DDFN_CONFIG_DIR", os.path.join("data", "node_configs"))
+CONFIG_DIR = config.CONFIG_DIR
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
 
@@ -49,8 +55,8 @@ class FMPNode(DDFN_Node):
         super().__init__(node_id, network)
         
         # All sectors should be loaded via Airspace Config page or Persistent config
-        self.sectors: List[SectorCapacity] = []
-        self.is_configured = False
+        self.sectors: List[SectorCapacity] = sectors if sectors else []
+        self.is_configured = len(self.sectors) > 0
         
         self.logger.info(f"FMPNode {node_id}: Initializing in base state. is_configured={self.is_configured}")
             
@@ -58,7 +64,7 @@ class FMPNode(DDFN_Node):
         self.active_slots: Dict[str, List[SlotDetails]] = {}
         self.fdps = FlightDataProcessingSystem()
         self.waypoint_db: Dict[str, Waypoint] = waypoint_db if waypoint_db is not None else WAYPOINTS
-        self._measure_window_minutes = 120 # Default setting
+        self._measure_window_minutes = config.FMP_DEFAULT_MEASURE_WINDOW # Default setting config-driven
         # --- Race-condition protection ---
         self._state_lock = asyncio.Lock()
         self.processed_proposal_ids: set = set()   # idempotency: skip duplicates
@@ -79,106 +85,256 @@ class FMPNode(DDFN_Node):
         # Load manual overrides from persistent storage
         self.manual_overrides = self.persistence.load_overrides()
         
-        self.load_local_config()
+        # Note: load_local_config is now async and will be called in start()
 
-    def load_local_config(self):
-        """Load airspace configuration from local storage."""
+    async def load_local_config(self):
+        """Load airspace configuration from local storage (async)."""
         self.logger.info(f"DEBUG: Attempting to load config from {self.config_path}")
-        if os.path.exists(self.config_path):
+        if await aiofiles.os.path.exists(self.config_path):
             self.logger.info(f"DEBUG: Config file found at {self.config_path}")
             try:
-                with open(self.config_path, "r") as f:
-                    config = json.load(f)
+                async with aiofiles.open(self.config_path, "r") as f:
+                    content = await f.read()
+                    config = json.loads(content)
                     self.aixm_source_file = config.get("aixm_source_file")
                     self.aixm_source_fir = config.get("aixm_source_fir")
                     self.active_config_name = config.get("config_name", "Default")
-                    self._measure_window_minutes = config.get("measure_window", 120)
+                    self._measure_window_minutes = config.get("measure_window", config.FMP_DEFAULT_MEASURE_WINDOW)
                     self.is_configured = config.get("is_configured", False)
                     
-                    if self.is_configured and self.aixm_source_file:
-                        # Ensure AIXM is loaded into the registry
-                        load_aixm_to_registry(self.aixm_source_file)
+                    # 1. Trigger AIXM load if source is present
+                    if self.aixm_source_file:
+                        from ddfn_v2.eng.airspace import load_from_aixm as load_aixm_to_registry
+                        try:
+                            load_aixm_to_registry(self.aixm_source_file)
+                        except Exception as e:
+                            self.logger.error(f"Failed to load AIXM registry from {self.aixm_source_file}: {e}")
+
+                    # 2. Re-resolve sectors based on references or fallback to full objects
+                    new_sectors = []
+                    
+                    # New Format: sector_configs (references)
+                    if "sector_configs" in config:
+                        from ddfn_v2.eng.airspace import SECTORS as GLOBAL_SECTORS
+                        for s_cfg in config["sector_configs"]:
+                            s_id = s_cfg["id"]
+                            if s_id in GLOBAL_SECTORS:
+                                gs = GLOBAL_SECTORS[s_id]
+                                new_sectors.append(SectorCapacity(
+                                    sector_id=s_id,
+                                    configuration="SINGLE",
+                                    declared_capacity_per_hour=s_cfg.get("capacity", 40),
+                                    current_demand_per_hour=0,
+                                    status="GREEN",
+                                    fl_lower=s_cfg.get("fl_lower", gs.fl_lower),
+                                    fl_upper=s_cfg.get("fl_upper", gs.fl_upper),
+                                    polygon=gs.polygon
+                                ))
+                            else:
+                                self.logger.warning(f"Sector reference {s_id} not found in AIXM registry.")
+                                
+                    # New Format: airport_configs (references)
+                    if "airport_configs" in config:
+                        for a_cfg in config["airport_configs"]:
+                            a_id = a_cfg["id"]
+                            new_sectors.append(SectorCapacity(
+                                sector_id=a_id,
+                                configuration="AIRPORT",
+                                declared_capacity_per_hour=a_cfg.get("capacity", 15),
+                                current_demand_per_hour=0,
+                                status="GREEN",
+                                is_virtual=True,
+                                name=a_cfg.get("name", a_id),
+                                polygon=[(a_cfg["lat"], a_cfg["lon"])]
+                            ))
+                            
+                    # Backward compatibility fallback: sectors (full objects)
+                    if not new_sectors and "sectors" in config:
+                        self.logger.info("Loading legacy full-object sector definitions.")
+                        new_sectors = [from_dict(SectorCapacity, s) for s in config["sectors"]]
                         
-                    if "sectors" in config:
-                        self.sectors = [from_dict(SectorCapacity, s) for s in config["sectors"]]
-                    elif self.is_configured and self.aixm_source_fir:
-                        from ddfn_v2.eng.airspace import get_fir_sectors as get_global_fir_sectors
-                        aixm_sectors = get_global_fir_sectors(self.aixm_source_fir)
-                        if aixm_sectors:
-                             self.sectors = [from_dict(SectorCapacity, s) for s in aixm_sectors]
+                    self.sectors = new_sectors
             except Exception as e:
                 self.logger.error(f"Failed to load local config: {e}")
 
-    def save_local_config(self, sectors=None, config_name=None):
-        """Save current airspace configuration to local storage."""
+    async def save_local_config(self, sectors=None, config_name=None):
+        """Save current airspace configuration to local storage (async)."""
         if config_name:
             self.logger.info(f"FMPNode: Updating active_config_name from {self.active_config_name} to {config_name}")
             self.active_config_name = config_name
             
         try:
+            # Store references instead of full geometry where possible
+            sector_configs = []
+            airport_configs = []
+            
+            for s in (sectors or self.sectors):
+                if s.is_virtual:
+                    # Airport virtual sector
+                    airport_configs.append({
+                        "id": s.sector_id,
+                        "name": getattr(s, 'name', s.sector_id),
+                        "lat": s.polygon[0][0] if s.polygon else 0,
+                        "lon": s.polygon[0][1] if s.polygon else 0,
+                        "capacity": s.declared_capacity_per_hour
+                    })
+                else:
+                    # Standard sector reference
+                    sector_configs.append({
+                        "id": s.sector_id,
+                        "fl_lower": s.fl_lower,
+                        "fl_upper": s.fl_upper,
+                        "capacity": s.declared_capacity_per_hour
+                    })
+
             config = {
-                "sectors": [s.model_dump() for s in (sectors or self.sectors)],
+                "sector_configs": sector_configs,
+                "airport_configs": airport_configs,
                 "aixm_source_file": self.aixm_source_file,
                 "aixm_source_fir": self.aixm_source_fir,
                 "config_name": self.active_config_name,
                 "measure_window": self._measure_window_minutes,
                 "is_configured": self.is_configured
             }
-            self.logger.info(f"FMPNode: Saving config dict with name: {config['config_name']}")
-            with open(self.config_path, "w") as f:
-                json.dump(config, f, indent=4)
+            self.logger.info(f"FMPNode: Saving reference-based config with name: {config['config_name']}")
+            async with aiofiles.open(self.config_path, "w") as f:
+                await f.write(json.dumps(config, indent=4))
             
-            # If a name is provided, also save to named storage
             if config_name and config_name != "Default":
-                self.save_named_config(config_name, config)
+                await self.save_named_config(config_name, config)
                 
             self.logger.info(f"Saved configuration to {self.config_path}")
         except Exception as e:
             self.logger.error(f"Failed to save local config: {e}")
 
-    def save_named_config(self, name: str, config_data: dict):
-        """Saves a configuration into the persistent library."""
+    async def save_named_config(self, name: str, config_data: dict):
+        """Saves a configuration into the persistent library and as a standalone file (async)."""
         saved = {}
-        if os.path.exists(self.saved_configs_path):
-            with open(self.saved_configs_path, "r") as f:
-                saved = json.load(f)
+        if await aiofiles.os.path.exists(self.saved_configs_path):
+            async with aiofiles.open(self.saved_configs_path, "r") as f:
+                content = await f.read()
+                saved = json.loads(content)
         
         saved[name] = config_data
-        with open(self.saved_configs_path, "w") as f:
-            json.dump(saved, f, indent=4)
+        async with aiofiles.open(self.saved_configs_path, "w") as f:
+            await f.write(json.dumps(saved, indent=4))
 
-    def list_saved_configs(self) -> List[str]:
-        if not os.path.exists(self.saved_configs_path):
-            return []
-        with open(self.saved_configs_path, "r") as f:
-            return list(json.load(f).keys())
+        # Also save as a standalone JSON file for external use (e.g., demo scripts)
+        standalone_path = os.path.join(CONFIG_DIR, f"{name}.json")
+        try:
+            async with aiofiles.open(standalone_path, "w") as f:
+                await f.write(json.dumps(config_data, indent=4))
+            self.logger.info(f"Saved standalone configuration to {standalone_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save standalone config {standalone_path}: {e}")
 
-    def delete_named_config(self, name: str):
-        if not os.path.exists(self.saved_configs_path):
+    async def list_saved_configs(self) -> List[str]:
+        """Lists available configurations from the registry and the node_configs directory."""
+        config_names = set()
+        # 1. Load from the aggregate "saved" registry
+        if await aiofiles.os.path.exists(self.saved_configs_path):
+            try:
+                async with aiofiles.open(self.saved_configs_path, "r") as f:
+                    content = await f.read()
+                    saved = json.loads(content)
+                    config_names.update(saved.keys())
+            except Exception as e:
+                self.logger.error(f"Error reading saved configs registry: {e}")
+        
+        # 2. Scan CONFIG_DIR for any standalone .json files that look like configurations
+        try:
+            # We look for .json files that are NOT internal registry files or active node files
+            # Active node files are named FMP_[node_id].json or FMP_[port]_DDFN_NODE.json
+            files = os.listdir(CONFIG_DIR)
+            for f in files:
+                if f.endswith(".json") and not f.endswith("_saved.json"):
+                    # Exclude the active node's primary config file to avoid confusion
+                    if f == f"{self.node_id}.json":
+                        continue
+                    # Strip .json
+                    config_names.add(f[:-5])
+        except Exception as e:
+            self.logger.error(f"Error scanning CONFIG_DIR: {e}")
+        
+        return sorted(list(config_names))
+
+    async def delete_named_config(self, name: str):
+        if not await aiofiles.os.path.exists(self.saved_configs_path):
             return
-        with open(self.saved_configs_path, "r") as f:
-            saved = json.load(f)
+        async with aiofiles.open(self.saved_configs_path, "r") as f:
+            content = await f.read()
+            saved = json.loads(content)
         if name in saved:
             del saved[name]
-            with open(self.saved_configs_path, "w") as f:
-                json.dump(saved, f, indent=4)
+            async with aiofiles.open(self.saved_configs_path, "w") as f:
+                await f.write(json.dumps(saved, indent=4))
 
-    def load_named_config(self, name: str):
-        if not os.path.exists(self.saved_configs_path):
+    async def load_named_config(self, name: str):
+        if not await aiofiles.os.path.exists(self.saved_configs_path):
             return False
-        with open(self.saved_configs_path, "r") as f:
-            saved = json.load(f)
+        async with aiofiles.open(self.saved_configs_path, "r") as f:
+            content = await f.read()
+            saved = json.loads(content)
         if name in saved:
             config = saved[name]
-            self.sectors = [from_dict(SectorCapacity, s) for s in config["sectors"]]
             self.aixm_source_file = config.get("aixm_source_file")
             self.aixm_source_fir = config.get("aixm_source_fir")
             self.active_config_name = name
-            self.save_local_config()
+            self._measure_window_minutes = config.get("measure_window", config.FMP_DEFAULT_MEASURE_WINDOW)
+            
+            # Re-resolve based on the same logic as load_local_config
+            if self.aixm_source_file:
+                from ddfn_v2.eng.airspace import load_from_aixm as load_aixm_to_registry
+                try:
+                    load_aixm_to_registry(self.aixm_source_file)
+                except Exception as e:
+                    self.logger.error(f"Failed to load AIXM registry from {self.aixm_source_file}: {e}")
+
+            new_sectors = []
+            if "sector_configs" in config:
+                from ddfn_v2.eng.airspace import SECTORS as GLOBAL_SECTORS
+                for s_cfg in config["sector_configs"]:
+                    s_id = s_cfg["id"]
+                    if s_id in GLOBAL_SECTORS:
+                        gs = GLOBAL_SECTORS[s_id]
+                        new_sectors.append(SectorCapacity(
+                            sector_id=s_id,
+                            configuration="SINGLE",
+                            declared_capacity_per_hour=s_cfg.get("capacity", 40),
+                            current_demand_per_hour=0,
+                            status="GREEN",
+                            fl_lower=s_cfg.get("fl_lower", gs.fl_lower),
+                            fl_upper=s_cfg.get("fl_upper", gs.fl_upper),
+                            polygon=gs.polygon
+                        ))
+            
+            if "airport_configs" in config:
+                for a_cfg in config["airport_configs"]:
+                    a_id = a_cfg["id"]
+                    new_sectors.append(SectorCapacity(
+                        sector_id=a_id,
+                        configuration="AIRPORT",
+                        declared_capacity_per_hour=a_cfg.get("capacity", 15),
+                        current_demand_per_hour=0,
+                        status="GREEN",
+                        is_virtual=True,
+                        name=a_cfg.get("name", a_id),
+                        polygon=[(a_cfg["lat"], a_cfg["lon"])]
+                    ))
+
+            if not new_sectors and "sectors" in config:
+                new_sectors = [from_dict(SectorCapacity, s) for s in config["sectors"]]
+                
+            self.sectors = new_sectors
+            self.is_configured = len(self.sectors) > 0
+            await self.save_local_config()
             return True
         return False
 
     async def start(self):
+        # Load local configuration on startup
+        await self.load_local_config()
+        
         # Register handlers BEFORE starting the message loop in super().start()
         self.register_handler("DISTRIBUTED_FLOW_CONSENSUS", self.handle_consensus)
         
@@ -195,6 +351,12 @@ class FMPNode(DDFN_Node):
         self.register_handler("FIR_HANDOVER_ADVISORY", self.handle_handover_advisory)
         self.register_handler("FLIGHT_PLAN_FILED", self.handle_flight_plan_filed)
         self.register_handler("AOCC_READY_TO_FLY", self.handle_aoc_ready)
+        
+        # Slot swap handler
+        self.register_handler("FMP_SLOT_SWAP_REQUEST", self.handle_slot_swap)
+
+        # Ripple Propagation handler
+        self.register_handler("CTOT_ASSIGNMENT_PROPOSAL", self.handle_consensus_proposal)
 
         await super().start()
         
@@ -207,12 +369,10 @@ class FMPNode(DDFN_Node):
         await self.network.subscribe("ddfn.fmp.command", self.subscription_queue)
 
         # Start background syncs
-
-        # Start background syncs
         asyncio.create_task(self._sync_capacity())
         asyncio.create_task(self._broadcast_inventory())
 
-        # Wait for network mesh to settle before initial handover scan
+        await asyncio.sleep(config.FMP_NETWORK_SETTLE_TIME)  # Wait for network mesh to settle before initial handover scan
         await asyncio.sleep(2.0)
 
         # Initial FDPS scan: for any flight exiting our FIR, emit handover
@@ -355,14 +515,12 @@ class FMPNode(DDFN_Node):
             except Exception as e:
                 self.logger.error(f"Error in _sync_capacity: {e}")
 
-            await asyncio.sleep(3.0)
-
+            await asyncio.sleep(config.FMP_CAPACITY_SYNC_INTERVAL)  # Capacity sync interval
     async def _reprocess_all_flights(self):
         """Re-evaluates trajectories for all flights in FDPS (e.g. after AIXM load)."""
         async with self._state_lock:
             count = 0
             for fid in list(self.fdps.flights.keys()):
-                old_flt = self.fdps.flights[fid]
                 new_flt = FlightTrajectory.from_flight_plan(
                     old_flt.flight_id, old_flt.origin, old_flt.destination, 
                     old_flt.departure_time, old_flt.cruise_fl, old_flt.route_string,
@@ -392,15 +550,13 @@ class FMPNode(DDFN_Node):
                     local_entries = [e for e in flt.route if e.sector_id in local_sector_ids]
                     
                     if not local_entries:
-                        # if len(flt.route) > 0:
-                        #    self.logger.info(f"Flight {fid} has {len(flt.route)} sectors but NONE in {local_sector_ids}")
                         continue # Not relevant for this node anymore?
                         
                     entry_seg = local_entries[0]
                     exit_seg = local_entries[-1]
                     
                     eta_entry = entry_seg.estimated_time_over
-                    self.logger.info(f"DEBUG: Flight {fid} is LOCAL. Entry: {entry_seg.sector_id} at {eta_entry}")
+                    # self.logger.info(f"DEBUG: Flight {fid} is LOCAL. Entry: {entry_seg.sector_id} at {eta_entry}")
 
                     
                     # Determine when the flight exits this node's FIR
@@ -415,7 +571,7 @@ class FMPNode(DDFN_Node):
                         exit_point = flt.destination
                         
                     # If flight has completely left the node's airspace, don't show it in the live inventory
-                    if now > eta_exit:
+                    if now > (eta_exit + timedelta(minutes=5)): # Add 5m buffer for visibility
                         continue
                     
                     status = "SCHEDULED"
@@ -436,27 +592,36 @@ class FMPNode(DDFN_Node):
                 
                 self._latest_inventory = [s.model_dump() for s in summaries]
             
+            self.logger.info(f"Broadcasting inventory for node {self.node_id}: {len(summaries)}/{len(self.fdps.flights)} flights.")
             inv = AirspaceInventory(node_id=self.node_id, flights=summaries)
             await self.network.publish("ddfn.airspace.inventory", inv.model_dump())
             await asyncio.sleep(5.0)
 
     async def handle_manual_override(self, msg: dict):
         """Called when UI dictates a capacity constraint (The V2 UI Builder)"""
+        print(f"DEBUG: {self.node_id} handle_manual_override received msg for {msg.get('target_node')}")
         if msg.get("target_node") == self.node_id:
             sector_id = msg.get("sector")
-            if not msg.get("capacity"): return
+            if not msg.get("capacity") and msg.get("capacity") != 0: return
             
             new_cap = int(msg.get("capacity"))
             reason = msg.get("reason", "FMP_MANUAL_ADJUSTMENT")
             
             # Parse time window
             try:
-                window_start_str = msg.get("start_time", "16:00")
-                window_end_str = msg.get("end_time", "18:00")
-                now_parsed = datetime.now(timezone.utc)
+                window_start_str = msg.get("start_time")
+                window_end_str = msg.get("end_time")
                 
-                start_dt = now_parsed.replace(hour=int(window_start_str.split(':')[0]), minute=int(window_start_str.split(':')[1]), second=0, microsecond=0)
-                end_dt = now_parsed.replace(hour=int(window_end_str.split(':')[0]), minute=int(window_end_str.split(':')[1]), second=0, microsecond=0)
+                if window_start_str and 'T' in window_start_str:
+                    start_dt = datetime.fromisoformat(window_start_str)
+                else:
+                    # Fallback to old format if needed or default
+                    start_dt = datetime.now(timezone.utc)
+                
+                if window_end_str and 'T' in window_end_str:
+                    end_dt = datetime.fromisoformat(window_end_str)
+                else:
+                    end_dt = start_dt + timedelta(hours=2)
             except Exception:
                 start_dt = datetime.now(timezone.utc)
                 end_dt = start_dt + timedelta(hours=2)
@@ -501,7 +666,9 @@ class FMPNode(DDFN_Node):
                     window_duration_mins = (end_dt - start_dt).total_seconds() / 60.0
                     effective_window_cap = new_cap * (window_duration_mins / 60.0)
 
+                    print(f"DEBUG: {self.node_id} Sector {sector_id} has {len(affected_flights)} affected flights. Effective window cap: {effective_window_cap}")
                     if len(affected_flights) > effective_window_cap:
+                        print(f"DEBUG: {self.node_id} Demand > Capacity! Running CASA...")
                         self.logger.info(f"Demand {len(affected_flights)} > Effective Window Capacity {effective_window_cap:.1f} (Rate: {new_cap}/hr). Running CASA...")
                         
                         slots = RegulationService.run_casa(
@@ -530,7 +697,19 @@ class FMPNode(DDFN_Node):
                                 capacity=new_cap,
                                 delayed_flights=len(slots)
                             ))
-                            self.logger.info(f"CASA calculated {len(slots)} delayed flights via RegulationService. Emitted to UI Inbox for {warn_id}.")
+
+                            # --- Ripple Propagation: Propose CTOTs to nodes originating these flights ---
+                            ripple_proposal = CTOTAssignmentProposal(
+                                proposal_id=f"PROP_{warn_id}_{self.node_id[:4]}",
+                                referencing_warning_id=warn_id,
+                                originating_node=self.node_id,
+                                target_nodes=list(participating_nodes),
+                                slot_assignments=slots,
+                                total_delay_minutes=sum(s.delay for s in slots)
+                            )
+                            await self.emit("ddfn.negotiation.proposal", ripple_proposal)
+
+                            self.logger.info(f"CASA calculated {len(slots)} delayed flights. Emitted to UI Inbox and Ripple (CTOT_ASSIGNMENT_PROPOSAL) to {len(participating_nodes)} nodes for {warn_id}.")
 
     async def handle_remove_override(self, msg: dict):
         """Removes a specific capacity override from a sector."""
@@ -556,8 +735,10 @@ class FMPNode(DDFN_Node):
     async def handle_set_measure_window(self, msg):
         if msg.get("target_node") == self.node_id:
             val = int(msg.get("minutes", 60))
+            print(f"DEBUG: handle_set_measure_window setting window to {val}")
             self._measure_window_minutes = val
             self.logger.info(f"FMP adjusted capacity measurement window to {val} minutes.")
+            await self.save_local_config()
 
     async def handle_merge_sectors(self, msg):
         if msg.get("target_node") == self.node_id:
@@ -721,6 +902,56 @@ class FMPNode(DDFN_Node):
                     )
                     await self.emit("ddfn.flow.consensus", cons)
 
+    async def handle_consensus_proposal(self, msg: dict):
+        """Handle incoming CTOT assignment proposal from a neighboring node (Ripple Propagation)."""
+        originator = msg.get("originating_node")
+        if originator == self.node_id:
+             return
+             
+        # Idempotency
+        prop_id = msg.get("proposal_id", "")
+        if self.persistence.is_processed(prop_id):
+            return
+
+        warn_id = msg.get("referencing_warning_id")
+        slots = [from_dict(SlotDetails, s) for s in msg.get("slot_assignments", [])]
+        
+        # Check if we manage any flight in this proposal
+        relevant = False
+        async with self._state_lock:
+            for s in slots:
+                if s.flight_id in self.fdps.flights:
+                    flt = self.fdps.flights[s.flight_id]
+                    # Relevant if we manage the origin of the flight
+                    if any(sec.sector_id == flt.origin for sec in self.sectors):
+                        relevant = True
+                        break
+        
+        if relevant:
+            self.logger.info(f"Ripple Proposal received from {originator} for {len(slots)} flights. Informing local HITL.")
+            self.persistence.mark_processed(prop_id)
+            
+            # Store in pending warnings so HITL can approve it
+            self.pending_warnings[warn_id] = {
+                "status": "PENDING_HITL_APPROVAL",
+                "slots": slots,
+                "participating_nodes": msg.get("target_nodes", [self.node_id, originator])
+            }
+            
+            # Surface to UI Inbox
+            await self.emit("ddfn.ui.inbox", UIInboxApprovalRequest(
+                target_node=self.node_id,
+                warning_id=warn_id,
+                sector_id=f"EXT_{originator[:4]}", # External constraint
+                demand=len(slots),
+                capacity=0, 
+                delayed_flights=len(slots)
+            ))
+
+    async def handle_warning_trigger(self, msg: dict):
+        """Handle incoming constraint warning (Deprecated in favor of handle_consensus_proposal)."""
+        pass
+
 
     async def handle_handover_advisory(self, msg):
         """A neighboring node is handing over a flight to us."""
@@ -819,6 +1050,7 @@ async def main():
     parser.add_argument("--port", type=int, help="Optional port for the local UI/API")
     parser.add_argument('--broker', type=str, default='ws://127.0.0.1:8001/ws', help='WebSocket broker URL')
     parser.add_argument('--aixm', type=str, help='Path to AIXM 4.5 XML file')
+    parser.add_argument('--config', type=str, help='Name of saved configuration to load on startup (e.g., LCCC, LFFF)')
     args = parser.parse_args()
 
     # Derived port logic
@@ -844,9 +1076,33 @@ async def main():
     if args.aixm:
         node.logger.info(f"AIXM source provided via CLI: {args.aixm}. Please configure the FIR in the dashboard.")
         node.aixm_source_file = args.aixm
-
+    
+    # Load named configuration if provided via --config argument
+    if args.config:
+        node.logger.info(f"Attempting to load named configuration: {args.config}")
+        config_loaded = await node.load_named_config(args.config)
+        if config_loaded:
+            node.logger.info(f"Successfully loaded configuration '{args.config}' with {len(node.sectors)} sectors.")
+        else:
+            node.logger.warning(f"Configuration '{args.config}' not found. Node will start in UNCONFIGURED state.")
     # Isolated Dashboard HTTP Server
     app = FastAPI(title=f"FMP Dashboard - {args.node_id}")
+
+    @app.get("/health")
+    async def health_check():
+        """
+        Health check endpoint for FMP node.
+        """
+        return {
+            "status": "healthy" if node.is_configured else "unconfigured",
+            "service": "fmp",
+            "node_id": node.node_id,
+            "configured": node.is_configured,
+            "measure_window": node._measure_window_minutes,
+            "sectors_count": len(node.sectors),
+            "flights_tracked": len(node.fdps.flights),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
 
     @app.get("/metadata")
     async def get_metadata():
@@ -854,7 +1110,8 @@ async def main():
         return {
             "node_id": node.node_id,
             "status": "DDFN True Distributed Local FMP",
-            "sectors": [dataclasses.asdict(s) for s in node.sectors],
+            "measure_window": node._measure_window_minutes,
+            "sectors": [s.model_dump() if hasattr(s, 'model_dump') else dataclasses.asdict(s) for s in node.sectors],
             "rad_restrictions": [dataclasses.asdict(r) for r in VALIDATOR.rules]
         }
 
@@ -863,11 +1120,11 @@ async def main():
         async with node._state_lock:
             return {
                 "node_id": node.node_id,
-                "sectors": [dataclasses.asdict(s) for s in node.sectors],
+                "sectors": [s.model_dump() if hasattr(s, 'model_dump') else dataclasses.asdict(s) for s in node.sectors],
                 "flights": node._latest_inventory
             }
 
-    @app.post("/api/sectors/window")
+    @app.post("/api/sectors/window", dependencies=[Security(verify_api_key)])
     async def api_set_window(data: SetWindowRequest):
         # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
@@ -877,7 +1134,7 @@ async def main():
         })
         return {"status": "success"}
 
-    @app.post("/api/sectors/merge")
+    @app.post("/api/sectors/merge", dependencies=[Security(verify_api_key)])
     async def api_merge_sectors(data: MergeSectorsRequest):
         # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
@@ -898,7 +1155,7 @@ async def main():
         v = RADValidator()
         return {"rules": [dataclasses.asdict(r) for r in v.rules]}
 
-    @app.post("/api/rad/toggle")
+    @app.post("/api/rad/toggle", dependencies=[Security(verify_api_key)])
     async def toggle_rad_rule(data: RADToggleRequest):
         """Activates or deactivates a RAD rule."""
         # Request is validated by Pydantic model
@@ -912,11 +1169,12 @@ async def main():
     @app.get("/api/configurations")
     async def api_get_configurations():
         # This legacy endpoint should ideally return named configs from local storage
+        configs = await node.list_saved_configs()
         return {
-            "configurations": node.list_saved_configs()
+            "configurations": configs
         }
 
-    @app.post("/api/configurations/apply")
+    @app.post("/api/configurations/apply", dependencies=[Security(verify_api_key)])
     async def api_apply_configuration(data: ApplyConfigurationRequest):
         # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
@@ -958,7 +1216,7 @@ async def main():
         try:
             parser = AIXMParser(validated_path)
             all_sectors = parser.extract_sectors()
-            # Filter by parent_fir prefix
+            # Filter by parent_fir prefix AND exclude the FIR itself (e.g., LCCC) if it matches the fir_id
             filtered = [s for s in all_sectors if s.parent_fir == fir_id]
             node.logger.info(f"Extracted {len(filtered)} sectors for FIR {fir_id} out of {len(all_sectors)} total.")
             return {
@@ -969,7 +1227,7 @@ async def main():
             node.logger.error(f"Error extracting sectors: {str(e)}")
             return {"status": "error", "message": str(e)}
 
-    @app.post("/api/config/apply_aixm")
+    @app.post("/api/config/apply_aixm", dependencies=[Security(verify_api_key)])
     async def api_apply_aixm_config(data: ApplyAIXMConfigRequest):
         # Request is validated by Pydantic model
         node.logger.info(f"API: Apply AIXM. File: {data.file_path}, FIR: {data.fir_id}, Config Name: {data.config_name}, Sectors: {len(data.sectors)}")
@@ -990,20 +1248,50 @@ async def main():
                     new_sectors.append(SectorCapacity(
                         sector_id=s_id,
                         configuration="AIXM_DYNAMIC",
-                        declared_capacity_per_hour=40,
+                        declared_capacity_per_hour=data.baseline_capacity,
                         current_demand_per_hour=0,
                         status="GREEN",
                         fl_lower=lo,
-                        fl_upper=hi
+                        fl_upper=hi,
+                        polygon=geo.polygon
                     ))
+            
+            # Handle airports as responsibility areas
+            for a_info in data.airports:
+                a_id = a_info["id"]
+                lat, lon = a_info["lat"], a_info["lon"]
+                # Create a small virtual sector (square) around the airport
+                delta = 0.02 # Approx 1.2NM radius
+                poly = [
+                    (lat - delta, lon - delta),
+                    (lat - delta, lon + delta),
+                    (lat + delta, lon + delta),
+                    (lat + delta, lon - delta),
+                    (lat - delta, lon - delta)
+                ]
+                new_sectors.append(SectorCapacity(
+                    sector_id=a_id,
+                    configuration="AIRPORT_NODE",
+                    declared_capacity_per_hour=data.baseline_capacity,
+                    current_demand_per_hour=0,
+                    status="GREEN",
+                    fl_lower=0,
+                    fl_upper=50, # Low level segment
+                    polygon=poly
+                ))
 
             async with node._state_lock:
                 node.sectors = new_sectors
                 node.aixm_source_file = data.file_path
                 node.aixm_source_fir = data.fir_id
-                node.save_local_config(config_name=data.config_name)
+                node._measure_window_minutes = data.window_size
+                node.is_configured = len(new_sectors) > 0
+                await node.save_local_config(config_name=data.config_name)
+            
+            # Reprocess trajectories with new sectors so inventory updates immediately
+            await node._reprocess_all_flights()
 
-            return {"status": "success", "message": f"Applied {len(new_sectors)} sectors."}
+            return {"status": "success", "message": f"Applied {len(new_sectors)} areas of responsibility."}
         except Exception as e:
             node.logger.error(f"Error applying AIXM config: {e}")
             return {"status": "error", "message": str(e)}
@@ -1013,12 +1301,15 @@ async def main():
         return {
             "file_path": node.aixm_source_file,
             "fir_id": node.aixm_source_fir,
-            "config_name": node.active_config_name
+            "baseline_capacity": node.sectors[0].declared_capacity_per_hour if node.sectors else 40,
+            "config_name": node.active_config_name,
+            "window_size": node._measure_window_minutes
         }
 
     @app.get("/api/config/list")
     async def api_list_configs():
-        return {"status": "success", "configs": node.list_saved_configs()}
+        configs = await node.list_saved_configs()
+        return {"status": "success", "configs": configs}
 
     @app.get("/api/setup/status")
     async def api_get_setup_status():
@@ -1027,7 +1318,7 @@ async def main():
             "node_id": node.node_id
         }
 
-    @app.post("/api/setup/configure")
+    @app.post("/api/setup/configure", dependencies=[Security(verify_api_key)])
     async def api_setup_configure(data: SetupConfigurationRequest):
         # Request is validated by Pydantic model
         node.logger.info(f"Received setup configuration request for FIR: {data.fir_id}")
@@ -1050,7 +1341,7 @@ async def main():
                 node.aixm_source_fir = data.fir_id
                 node._measure_window_minutes = data.window_size
                 node.is_configured = True
-                node.save_local_config(config_name=config_name)
+                await node.save_local_config(config_name=config_name)
 
             # 3. Reprocess any flights received during unconfigured state
             await node._reprocess_all_flights()
@@ -1069,12 +1360,12 @@ async def main():
         except ValueError as e:
             return {"status": "error", "message": f"Invalid configuration name: {e}"}
 
-        success = node.load_named_config(name)
+        success = await node.load_named_config(name)
         if success:
             return {"status": "success"}
         return {"status": "error", "message": "Configuration not found"}
 
-    @app.delete("/api/config/delete/{name}")
+    @app.delete("/api/config/delete/{name}", dependencies=[Security(verify_api_key)])
     async def api_delete_config(name: str):
         # Validate config name
         try:
@@ -1158,7 +1449,7 @@ async def main():
             node.logger.error(f"Error extracting routes: {str(e)}")
             return {"status": "error", "message": str(e)}
 
-    @app.post("/api/sectors/override")
+    @app.post("/api/sectors/override", dependencies=[Security(verify_api_key)])
     async def api_override_capacity(data: CapacityOverrideRequest):
         # Request is validated by Pydantic model
         await node.network.publish("ddfn.fmp.command", {
@@ -1180,8 +1471,9 @@ async def main():
         index_path = os.path.join(dashboard_dir, "index.html")
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
-        # Inject the active node directly into the HTML context
+        # Inject the active node and API key directly into the HTML context
         html = html.replace("window.ACTIVE_NODE_ID = null;", f"window.ACTIVE_NODE_ID = '{args.node_id}_DDFN_NODE';")
+        html = html.replace("window.API_KEY = null;", f"window.API_KEY = '{os.environ.get('DDFN_API_KEY', '')}';")
         
         current_config = node.active_config_name
         node.logger.info(f"Serving index.html. Active Config: '{current_config}'")

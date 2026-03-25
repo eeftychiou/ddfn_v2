@@ -6,10 +6,14 @@ import threading
 import queue
 import logging
 
+from ddfn_v2.core.config import config
+
 logger = logging.getLogger("Audit")
 
 class SWIMAuditLog:
-    def __init__(self, db_path="logs/swim_audit.db"):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = config.AUDIT_DB_PATH
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self.db_path = db_path
         self.queue = queue.Queue()

@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sim-manager
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: sim-manager
+    app.kubernetes.io/instance: sim-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sim-manager
+  template:
+    metadata:
+      labels:
+        app: sim-manager
+        app.kubernetes.io/component: sim-manager
+    spec:
+      containers:
+      - name: sim-manager
+        image: ddfn-v2:latest
+        imagePullPolicy: IfNotPresent
+        command:
+          - "python"
+          - "-m"
+          - "ddfn_v2.services.sim_manager"
+          - "--port"
+          - "8050"
+          - "--broker"
+          - "ws://broker:8001/ws"
+        ports:
+        - containerPort: 8050
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: ddfn-config
+        - secretRef:
+            name: ddfn-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8050
+          initialDelaySeconds: 20
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8050
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: data
+          mountPath: /app/data
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sim-manager
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: sim-manager
+spec:
+  selector:
+    app: sim-manager
+  ports:
+  - port: 8050
+    targetPort: 8050
+    name: http
+  type: ClusterIP

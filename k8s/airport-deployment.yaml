@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airport-lfpg
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: airport
+    app.kubernetes.io/instance: airport-lfpg
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airport-lfpg
+  template:
+    metadata:
+      labels:
+        app: airport-lfpg
+        app.kubernetes.io/component: airport
+    spec:
+      containers:
+      - name: airport
+        image: ddfn-v2:latest
+        imagePullPolicy: IfNotPresent
+        command:
+          - "python"
+          - "-m"
+          - "ddfn_v2.services.airport_service"
+          - "LFPG"
+          - "--port"
+          - "8020"
+          - "--broker"
+          - "ws://broker:8001/ws"
+        ports:
+        - containerPort: 8020
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: ddfn-config
+        - secretRef:
+            name: ddfn-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8020
+          initialDelaySeconds: 20
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8020
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: data
+          mountPath: /app/data
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airport-lfpg
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: airport
+spec:
+  selector:
+    app: airport-lfpg
+  ports:
+  - port: 8020
+    targetPort: 8020
+    name: http
+  type: ClusterIP

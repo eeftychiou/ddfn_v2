@@ -2,10 +2,15 @@ import asyncio
 import json
 import logging
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from typing import Dict, List, Any
+import weakref
+from datetime import datetime, timezone
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Security
+from fastapi.security import APIKeyHeader
+from typing import Dict, List, Any, Set
 
 from ddfn_v2.core.audit import SWIMAuditLog
+from ddfn_v2.core.auth import verify_api_key, API_KEY_NAME
+from ddfn_v2.core.config import config
 
 # Configure brief logging
 logging.basicConfig(
@@ -14,13 +19,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Broker")
 
-auditor = SWIMAuditLog("data/swim_audit.db")
+auditor = SWIMAuditLog()
 
 app = FastAPI(title="DDFN SWIM Message Broker")
 
 # topic -> list of websockets
 subscribers: Dict[str, List[WebSocket]] = {}
 active_nodes: Dict[WebSocket, str] = {}
+
+# Track active tasks for proper cleanup
+_active_tasks: weakref.WeakSet = weakref.WeakSet()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -71,7 +79,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         auditor.log_event(topic, message)
                         
                     if topic in subscribers:
-                        # Broadcast concurrently
+                        # Broadcast concurrently with proper task cleanup
                         async def send_to_ws(ws, t, m):
                             try:
                                 await ws.send_json({"topic": t, "message": m})
@@ -80,7 +88,24 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         tasks = [asyncio.create_task(send_to_ws(ws, topic, message)) 
                                  for ws in subscribers[topic]]
-                        # We don't await them to avoid blocking this node's processing
+                        
+                        # Track tasks for cleanup
+                        for task in tasks:
+                            _active_tasks.add(task)
+                            task.add_done_callback(lambda t: _active_tasks.discard(t))
+                        
+                        # Wait for all tasks with timeout to prevent hanging
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.gather(*tasks, return_exceptions=True),
+                                timeout=5.0
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(f"Publish to topic {topic} timed out")
+                            # Cancel remaining tasks
+                            for task in tasks:
+                                if not task.done():
+                                    task.cancel()
                             
             except json.JSONDecodeError:
                 logger.error("Received malformed JSON")
@@ -101,15 +126,29 @@ from fastapi.responses import HTMLResponse
 import os
 import sqlite3
 
-os.makedirs("logs", exist_ok=True)
+os.makedirs(config.LOGS_DIR, exist_ok=True)
 
-@app.get("/api/nodes")
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for monitoring.
+    Returns 200 OK if broker is operational.
+    """
+    return {
+        "status": "healthy",
+        "service": "broker",
+        "active_nodes": len(active_nodes),
+        "active_topics": len(subscribers),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.get("/api/nodes", dependencies=[Security(verify_api_key)])
 async def api_get_nodes():
     return {"nodes": list(active_nodes.values())}
 
-@app.get("/api/audit")
+@app.get("/api/audit", dependencies=[Security(verify_api_key)])
 async def api_get_audit():
-    with sqlite3.connect("data/swim_audit.db") as conn:
+    with sqlite3.connect(config.AUDIT_DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT timestamp, topic, message_type, source_node, payload FROM audit_log ORDER BY id DESC LIMIT 100")
         rows = cursor.fetchall()
@@ -119,10 +158,10 @@ async def api_get_audit():
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
     # Adjusted path for web/broker_dashboard
-    with open("web/broker_dashboard/index.html", "r", encoding="utf-8") as f:
+    with open(os.path.join(config.PROJECT_ROOT, "web", "broker_dashboard", "index.html"), "r", encoding="utf-8") as f:
         return f.read()
 
-app.mount("/", StaticFiles(directory="web/broker_dashboard"), name="static")
+app.mount("/", StaticFiles(directory=os.path.join(config.PROJECT_ROOT, "web", "broker_dashboard")), name="static")
 
 if __name__ == "__main__":
     logger.info("Starting DDFN V2 Message Broker on ws://127.0.0.1:8001/ws")

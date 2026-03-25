@@ -1,5 +1,5 @@
 let ws;
-let demandChart;
+var demandChart;
 const logContainer = document.getElementById('log-container');
 const inboxContainer = document.getElementById('inbox-container');
 let currentSlotTable = [];
@@ -7,12 +7,13 @@ let selectedFlights = [];
 let currentWarningId = "";
 let currentAirspaceInventory = [];
 let currentDemandProfile = [];
-let currentSectorCapacity = 0;
+var currentSectorCapacity = 0;
 let currentSectorOverrides = [];
 let currentChartBins = [];
 let configMap, configSectorsLayer, configCountryLayer;
 let configAirportsLayer, configWaypointsLayer, configAirwaysLayer;
 let configSelectedAixmFile = "";
+let overviewMap, overviewSectorsLayer;
 
 // CHMI Workspace Definition
 const FIR_SECTORS = {
@@ -108,20 +109,37 @@ function initChart() {
 }
 
 function updateChartFromProfile() {
-    if (!demandChart || currentDemandProfile.length === 0) return;
+    if (!demandChart) return;
 
-    // A full profile spans 24 hours (-12h to +12h) in 5min bins (288 bins total). 'Now' is roughly at index 144.
-    const scopeHours = parseInt(document.getElementById('chart-time-scope').value);
-    const panHours = parseInt(document.getElementById('chart-pan-slider').value);
+    // Use a default time window if no profile is available (e.g. for initial load)
+    let profileToProcess = [...currentDemandProfile];
+    if (profileToProcess.length === 0) {
+        // Create 24 hours of empty bins to show time scale and capacity
+        const now = new Date();
+        const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+        const startTs = startOfToday.getTime();
+        for(let i=0; i<288; i++) {
+            const ts = startTs + i*5*60000;
+            const d = new Date(ts);
+            profileToProcess.push({
+                timestamp: ts,
+                time_label: d.getUTCHours().toString().padStart(2, '0') + ":" + d.getUTCMinutes().toString().padStart(2, '0'),
+                demand_count: 0,
+                flights: []
+            });
+        }
+    }
 
-    // 12 bins per hour
+    const scopeHours = parseInt(document.getElementById('chart-time-scope')?.value || 4);
+    const panHours = parseInt(document.getElementById('chart-pan-slider')?.value || 0);
+
     const centerIdx = 144 + (panHours * 12);
     const halfScopeBins = (scopeHours * 12) / 2;
 
     let startIdx = Math.max(0, centerIdx - halfScopeBins);
-    let endIdx = Math.min(currentDemandProfile.length, centerIdx + halfScopeBins);
+    let endIdx = Math.min(profileToProcess.length, centerIdx + halfScopeBins);
 
-    currentChartBins = currentDemandProfile.slice(startIdx, endIdx);
+    currentChartBins = profileToProcess.slice(startIdx, endIdx);
 
     const now = new Date();
     const utcNowStr = now.toISOString().split('T')[1].substring(0, 5); // HH:MM
@@ -331,9 +349,22 @@ function initWebSocket() {
 
 function handleSwappedMessage(topic, payload) {
     const msgType = payload.message_type;
+    console.log(`[DEBUG] WebSocket Message: ${msgType} | Node: ${payload.node_id} | ActiveNode: ${getActiveNode()}`);
 
     if (msgType === "CAPACITY_STATE_BROADCAST") {
         const s = payload.sector;
+
+        // Update Overview Map if it exists
+        if (overviewSectorsLayer) {
+            overviewSectorsLayer.eachLayer(layer => {
+                if (layer.options.id === `map-sector-${s.sector_id}`) {
+                    layer.setStyle({
+                        color: s.status === 'RED' ? '#f85149' : '#58a6ff',
+                        fillColor: s.status === 'RED' ? '#f85149' : '#58a6ff'
+                    });
+                }
+            });
+        }
 
         // Only update the graph if this sector is currently selected in the UI
         const selectedSector = document.getElementById('builder-sector');
@@ -389,7 +420,8 @@ function handleSwappedMessage(topic, payload) {
         }
     } else if (msgType === "AIRSPACE_INVENTORY_UPDATE") {
         if (payload.node_id === getActiveNode()) {
-            currentAirspaceInventory = payload.flights;
+            console.log(`[DEBUG] Received Inventory Update. Flights: ${payload.flights ? payload.flights.length : 0}`);
+            currentAirspaceInventory = payload.flights || [];
             renderInventoryTable();
         }
     } else if (msgType === "RAD_VIOLATION" || msgType === "SLOT_SWAP_REJECTED") {
@@ -512,12 +544,18 @@ window.rejectProposal = function (warningId) {
     }
 }
 
-document.getElementById('builder-sector')?.addEventListener('change', () => {
+document.getElementById('builder-sector')?.addEventListener('change', (e) => {
+    const sid = e.target.value;
+    if (window.CURRENT_RESPONSIBILITY) {
+        const meta = window.CURRENT_RESPONSIBILITY.find(s => s.sector_id === sid);
+        if (meta) {
+            currentSectorCapacity = meta.declared_capacity_per_hour;
+        }
+    }
     currentDemandProfile = [];
     if (demandChart) {
-        demandChart.data.datasets[0].data = [];
-        demandChart.data.datasets[1].data = [];
-        demandChart.update();
+        // updateChartFromProfile will handle the 4-dataset initialization if needed
+        updateChartFromProfile();
     }
 });
 
@@ -575,16 +613,104 @@ function appendLog(typeClass, message) {
 }
 
 // Init defaults for the initial node selection
-function initWorkspace() {
+async function initWorkspace() {
     const configName = document.getElementById('config-name-display')?.innerText.replace('Config: ', '') || 'Default';
-    if (configName !== 'Default') {
-        document.getElementById('active-node-badge').innerText = `Config: ${configName}`;
-    } else {
-        document.getElementById('active-node-badge').innerText = `Node: ${getActiveNode().split('_')[0]}`;
+    
+    try {
+        const res = await fetch('/metadata');
+        const data = await res.json();
+        
+        if (data.node_id) {
+            window.ACTIVE_NODE_ID = data.node_id;
+            const nodeShort = data.node_id.split('_')[0];
+            document.getElementById('active-node-badge').innerText = configName !== 'Default' ? `Config: ${configName}` : `Node: ${nodeShort}`;
+        }
+        
+        if (data.measure_window) {
+            const select = document.getElementById('measurement-window-select');
+            if (select) select.value = data.measure_window;
+        }
+
+        if (data.sectors && data.sectors.length > 0) {
+            // Priority given to sectors the node actually has responsibility for
+            currentWorkspaceSectors = data.sectors.map(s => s.sector_id);
+            window.CURRENT_RESPONSIBILITY = data.sectors;
+            
+            renderWorkspace();
+            initOverviewMap(data.sectors);
+            
+            // Auto-select first sector for the chart if none selected
+            const builderSelect = document.getElementById('builder-sector');
+            if (builderSelect && !builderSelect.value && currentWorkspaceSectors.length > 0) {
+                builderSelect.value = currentWorkspaceSectors[0];
+                builderSelect.dispatchEvent(new Event('change'));
+            }
+        } else {
+            // Fallback for unconfigured nodes
+            currentWorkspaceSectors = (FIR_SECTORS[getActiveNode()] || []).slice(0, 2).map(s => s.id);
+            renderWorkspace();
+        }
+    } catch (e) {
+        console.error("Failed to fetch node metadata:", e);
+        // Fallback
+        currentWorkspaceSectors = (FIR_SECTORS[getActiveNode()] || []).slice(0, 2).map(s => s.id);
+        renderWorkspace();
     }
-    currentWorkspaceSectors = (FIR_SECTORS[getActiveNode()] || []).slice(0, 2).map(s => s.id);
-    renderWorkspace();
+    
     loadConfigurations();
+}
+
+function initOverviewMap(sectors) {
+    if (!document.getElementById('overview-map')) return;
+    
+    if (!overviewMap) {
+        overviewMap = L.map('overview-map', {
+            zoomControl: true,
+            attributionControl: false
+        }).setView([47.0, 2.0], 5); // Default center on Europe
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19
+        }).addTo(overviewMap);
+
+        overviewSectorsLayer = L.featureGroup().addTo(overviewMap);
+    }
+    
+    visualizeOverviewSectors(sectors);
+}
+
+function visualizeOverviewSectors(sectors) {
+    if (!overviewSectorsLayer) return;
+    overviewSectorsLayer.clearLayers();
+    
+    let bounds = null;
+    
+    sectors.forEach(s => {
+        if (s.geometry && s.geometry.length > 0) {
+            const poly = L.polygon(s.geometry, {
+                color: s.status === 'RED' ? '#f85149' : '#58a6ff',
+                weight: 2,
+                fillColor: s.status === 'RED' ? '#f85149' : '#58a6ff',
+                fillOpacity: 0.1,
+                id: `map-sector-${s.sector_id}`
+            }).addTo(overviewSectorsLayer);
+            
+            poly.bindTooltip(s.sector_id, {
+                permanent: true,
+                direction: 'center',
+                className: 'map-label'
+            });
+            
+            if (!bounds) bounds = poly.getBounds();
+            else bounds.extend(poly.getBounds());
+        }
+    });
+    
+    if (bounds && sectors.length > 0) {
+        overviewMap.fitBounds(bounds, { padding: [20, 20] });
+    }
+    
+    document.getElementById('map-sector-count').innerText = `${sectors.length} Sectors`;
 }
 
 async function loadConfigurations() {
@@ -642,9 +768,16 @@ function renderWorkspace() {
     builderSector.innerHTML = '<option value="">-- Select Sector --</option>';
 
     currentWorkspaceSectors.forEach(sid => {
-        // Find sector info
-        const allSectors = FIR_SECTORS[getActiveNode()] || [];
-        const info = allSectors.find(s => s.id === sid) || { id: sid, desc: "Custom Sector" };
+        // Find sector info from metadata if available
+        let desc = "Active Sector";
+        if (window.CURRENT_RESPONSIBILITY) {
+            const meta = window.CURRENT_RESPONSIBILITY.find(s => s.sector_id === sid);
+            if (meta && meta.description) desc = meta.description;
+        } else {
+            const allSectors = FIR_SECTORS[getActiveNode()] || [];
+            const info = allSectors.find(s => s.id === sid);
+            if (info) desc = info.desc;
+        }
 
         const card = document.createElement('div');
         card.className = 'node';
@@ -652,13 +785,13 @@ function renderWorkspace() {
         card.innerHTML = `
             <div class="node-header">
                 <span class="node-name">${sid}</span>
-                <span class="node-id">${info.desc}</span>
+                <span class="node-id">${desc}</span>
             </div>
             <div class="demand-meter">
                 <div class="meter-bar"><div class="meter-fill green" style="width: 0%"></div></div>
                 <div class="meter-labels">
                     <span>Demand: <span class="demand-val">0</span></span>
-                    <span>Cap: <span class="cap-val">45</span></span>
+                    <span>Cap: <span class="cap-val">--</span></span>
                 </div>
             </div>
         `;
@@ -776,39 +909,7 @@ document.getElementById('btn-apply-config').addEventListener('click', async () =
     }
 });
 
-// Init defaults for the initial node selection
-setTimeout(initWorkspace, 500); // Give active node injection time to settle
-
-initChart();
-initWebSocket();
-
-// Tab Navigation Logic
-document.addEventListener('DOMContentLoaded', () => {
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabPanes = document.querySelectorAll('.tab-pane');
-
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            // Remove active class from all buttons and panes
-            tabBtns.forEach(b => b.classList.remove('active'));
-            tabPanes.forEach(p => p.classList.remove('active'));
-
-            // Add active class to clicked button and target pane
-            btn.classList.add('active');
-            const targetId = btn.getAttribute('data-target');
-            document.getElementById(targetId).classList.add('active');
-
-            // Resize Chart.js if the flow tab is activated
-            if (targetId === 'tab-flow' && demandChart) {
-                demandChart.resize();
-            }
-
-            if (targetId === 'tab-config') {
-                initAirspaceConfigTab();
-            }
-        });
-    });
-});
+// Removed redundant initialization and duplicate listener
 
 // AIRSPACE CONFIGURATION LOGIC
 function initAirspaceConfigTab() {
@@ -859,6 +960,9 @@ function initAirspaceConfigTab() {
                     document.getElementById('config-node-name').value = data.config_name;
                     document.getElementById('config-name-display').innerText = `Config: ${data.config_name}`;
                 }
+                if (data.window_size) {
+                    document.getElementById('config-window-size').value = data.window_size;
+                }
             });
 
         // Load saved configurations list
@@ -879,10 +983,14 @@ function initAirspaceConfigTab() {
 }
 
 async function loadSavedConfigsList() {
+    const select = document.getElementById('config-saved-list');
     try {
         const res = await fetch('/api/config/list');
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Server returned ${res.status}: ${errorText}`);
+        }
         const data = await res.json();
-        const select = document.getElementById('config-saved-list');
         if (data.status === 'success' && select) {
             select.innerHTML = '<option value="">-- Select to Load --</option>';
             data.configs.forEach(cfg => {
@@ -891,9 +999,15 @@ async function loadSavedConfigsList() {
                 opt.innerText = cfg;
                 select.appendChild(opt);
             });
+        } else if (data.status === 'error' && select) {
+            select.innerHTML = '<option value="">-- Error loading configs --</option>';
+            console.error("Server error loading configs:", data.message);
         }
     } catch (e) {
-        console.error("Failed to load configs list", e);
+        console.error("Failed to load configs list:", e);
+        if (select) {
+            select.innerHTML = '<option value="">-- Error: ' + (e.message || 'Failed to load') + ' --</option>';
+        }
     }
 }
 
@@ -975,34 +1089,109 @@ document.getElementById('btn-load-aixm')?.addEventListener('click', () => {
     loadAixmSource(filePath);
 });
 
-async function loadAixmSource(filePath, targetFirId = null) {
-    configSelectedAixmFile = filePath;
+async function initConfigTab() {
+    console.log("initConfigTab: fetching aixm_source...");
     try {
-        const res = await fetch(`/api/aixm/firs?file_path=${encodeURIComponent(filePath)}`);
+        const res = await fetch('/api/config/aixm_source');
         const data = await res.json();
-
-        if (data.status === 'success') {
-            const select = document.getElementById('config-fir-select');
-            select.innerHTML = '<option value="">-- Select FIR --</option>';
-            data.firs.forEach(fir => {
-                select.innerHTML += `<option value="${fir}">${fir}</option>`;
-            });
-            if (targetFirId) {
-                select.value = targetFirId;
-                select.dispatchEvent(new Event('change'));
-            }
-            appendLog('system', `Loaded AIXM info from ${filePath}. ${data.firs.length} FIRs found.`);
+        console.log("initConfigTab response:", data);
+        
+        if (data.file_path) {
+            document.getElementById('config-aixm-path').value = data.file_path;
+            document.getElementById('config-baseline-capacity').value = data.baseline_capacity || 40;
+            document.getElementById('config-node-name').value = data.config_name || '';
+            document.getElementById('config-window-size').value = data.window_size || 5;
             
-            // Background load airports/waypoints if toggled (or just cache them)
-            loadExtraLayers();
-        } else {
-            console.error("Error loading AIXM:", data.message);
-            appendLog('error', `Failed to load AIXM info: ${data.message}`);
-            alert("Error loading AIXM: " + data.message);
+            console.log("initConfigTab: calling loadAixmSource with", data.file_path, data.fir_id);
+            await loadAixmSource(data.file_path, data.fir_id);
         }
     } catch (e) {
-        console.error(e);
-        alert("Failed to connect to backend.");
+        console.error("Failed to init config tab:", e);
+    }
+}
+
+async function loadAixmSource(filePath, targetFirId = null) {
+    configSelectedAixmFile = filePath; // Keep this for other functions that might rely on it
+    console.log(`Loading AIXM source: ${filePath}, target FIR: ${targetFirId}`);
+    try {
+        const firResponse = await fetch(`/api/aixm/firs?file_path=${encodeURIComponent(filePath)}`);
+        const firData = await firResponse.json();
+
+        if (firData.status === "success") {
+            const select = document.getElementById('config-fir-select');
+            const currentSelected = select.value;
+            select.innerHTML = '<option value="">-- Select FIR --</option>';
+            firData.firs.forEach(fir => {
+                const opt = document.createElement('option');
+                opt.value = fir;
+                opt.textContent = fir;
+                if (fir === targetFirId || (!targetFirId && fir === currentSelected)) opt.selected = true;
+                select.appendChild(opt);
+            });
+
+            const firToLoad = targetFirId || select.value;
+            if (firToLoad) {
+                await loadFirSectors(filePath, firToLoad); // Renamed from renderConfigSectors to match existing
+                await renderConfigAirports(filePath, firToLoad);
+            }
+            appendLog('system', `Loaded AIXM info from ${filePath}. ${firData.firs.length} FIRs found.`);
+            loadExtraLayers(); // Keep this for waypoints/airways
+        } else {
+            console.error("Error loading AIXM:", firData.message);
+            appendLog('error', `Failed to load AIXM info: ${firData.message}`);
+            // showToast("Error loading AIXM: " + firData.message, "error");
+        }
+    } catch (e) {
+        console.error("Failed to load AIXM FIRs:", e);
+        // showToast("Failed to connect to backend.", "error");
+    }
+}
+
+async function renderConfigAirports(filePath, firId) {
+    const listEl = document.getElementById('config-airport-list');
+    if (!listEl) return; // Ensure element exists
+    listEl.innerHTML = '<div class="loading-text">Loading airports...</div>';
+
+    try {
+        const response = await fetch(`/api/aixm/airports?file_path=${encodeURIComponent(filePath)}&fir_id=${encodeURIComponent(firId)}`);
+        const data = await response.json();
+
+        if (data.status === "success" && data.airports) {
+            listEl.innerHTML = '';
+            if (data.airports.length === 0) {
+                listEl.innerHTML = '<div class="placeholder-text">No airports found in this FIR</div>';
+                return;
+            }
+
+            data.airports.forEach(apt => {
+                // Check if this airport is in active responsibility (virtual sector ID = apt.ident)
+                const isActive = (window.CURRENT_RESPONSIBILITY || []).some(s => s.sector_id === apt.ident);
+                const isChecked = isActive ? 'checked' : '';
+
+                const item = document.createElement('div');
+                item.className = 'config-item';
+                item.innerHTML = `
+                    <input type="checkbox" id="apt-${apt.ident}" class="airport-config-check" ${isChecked} data-id="${apt.ident}" data-name="${apt.name}" data-lat="${apt.lat}" data-lon="${apt.lon}">
+                    <label for="apt-${apt.ident}">${apt.ident} - ${apt.name}</label>
+                `;
+                listEl.appendChild(item);
+            });
+
+            // Add listeners for individual airport checkboxes
+            listEl.querySelectorAll('.airport-config-check').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    updateSelectAllState('airport');
+                });
+            });
+
+            // Initial state for "Select All" airport checkbox
+            updateSelectAllState('airport');
+        } else {
+            listEl.innerHTML = '<div class="error-text">Failed to load airports</div>';
+        }
+    } catch (err) {
+        console.error("Error fetching airports:", err);
+        listEl.innerHTML = '<div class="error-text">Network error</div>';
     }
 }
 
@@ -1015,7 +1204,9 @@ async function loadFirSectors(filePath, firId) {
         if (data.status === 'success') {
             window.CURRENT_AIXM_SECTORS = data.sectors; // Store globally for filtering
             renderConfigSectors(data.sectors);
-            visualizeSectors(data.sectors);
+            
+            // Only update map after selections are potentially restored by renderConfigSectors
+            updateMapSectorsFromUI();
         }
     } catch (e) {
         console.error(e);
@@ -1026,6 +1217,7 @@ document.getElementById('config-fir-select')?.addEventListener('change', async (
     const firId = e.target.value;
     if (!firId) return;
     loadFirSectors(configSelectedAixmFile, firId);
+    renderConfigAirports(configSelectedAixmFile, firId);
     loadExtraLayers();
 });
 
@@ -1047,41 +1239,137 @@ function renderActiveResponsibility(sectors) {
 
 function renderConfigSectors(sectors) {
     const list = document.getElementById('config-sector-list');
-    list.innerHTML = sectors.map(s => `
-        <div class="sector-config-item" data-id="${s.sector_id}" style="border-bottom: 1px solid var(--glass-border); padding: 5px 0;">
-            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
-                <input type="checkbox" value="${s.sector_id}" class="sector-config-check" checked data-name="${s.name}">
-                <div style="flex: 1;">
-                    <strong>${s.sector_id}</strong><br>
-                    <small>${s.name}</small>
-                </div>
-            </label>
-            <div style="display: flex; gap: 10px; margin-top: 5px; margin-left: 25px;">
-                <div style="display:flex; flex-direction:column;">
-                    <label style="font-size: 0.65rem; color:var(--text-sec);">Min FL</label>
-                    <input type="number" class="fl-min-input" value="${s.fl_lower}" style="width: 50px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-main); font-size: 0.7rem; padding: 2px;">
-                </div>
-                <div style="display:flex; flex-direction:column;">
-                    <label style="font-size: 0.65rem; color:var(--text-sec);">Max FL</label>
-                    <input type="number" class="fl-max-input" value="${s.fl_upper}" style="width: 50px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-main); font-size: 0.7rem; padding: 2px;">
+    if (!list) return;
+
+    list.innerHTML = sectors.map(s => {
+        // Find if this sector is in active responsibility
+        const activeSec = (window.CURRENT_RESPONSIBILITY || []).find(rs => rs.sector_id === s.sector_id);
+        const isChecked = activeSec ? 'checked' : '';
+        const flLower = activeSec ? activeSec.fl_lower : s.fl_lower;
+        const flUpper = activeSec ? activeSec.fl_upper : s.fl_upper;
+
+        return `
+            <div class="sector-config-item" data-id="${s.sector_id}" style="border-bottom: 1px solid var(--glass-border); padding: 5px 0;">
+                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" value="${s.sector_id}" class="sector-config-check" ${isChecked} data-id="${s.sector_id}" data-name="${s.name}" data-fl-lower="${flLower}" data-fl-upper="${flUpper}">
+                    <div style="flex: 1;">
+                        <strong style="color: var(--text-main); font-size: 0.9rem;">${s.sector_id}</strong><br>
+                        <small style="color: var(--text-sec); font-size: 0.75rem;">${s.name}</small>
+                    </div>
+                </label>
+                <div style="display: flex; gap: 10px; margin-top: 5px; margin-left: 25px;">
+                    <div style="display:flex; flex-direction:column;">
+                        <label style="font-size: 0.65rem; color:var(--text-sec);">Min FL</label>
+                        <input type="number" class="fl-min-input" value="${flLower}" style="width: 50px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-main); font-size: 0.7rem; padding: 2px; border-radius: 2px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column;">
+                        <label style="font-size: 0.65rem; color:var(--text-sec);">Max FL</label>
+                        <input type="number" class="fl-max-input" value="${flUpper}" style="width: 50px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-main); font-size: 0.7rem; padding: 2px; border-radius: 2px;">
+                    </div>
                 </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
-    // Add listeners for live updates
+    // Add listeners for individual checkboxes
     list.querySelectorAll('.sector-config-check').forEach(cb => {
         cb.addEventListener('change', () => {
             updateMapSectorsFromUI();
+            updateSelectAllState('sector');
+        });
+    });
+
+    // Initial state for "Select All" checkbox
+    updateSelectAllState('sector');
+
+    // Add listeners for FL inputs to update data attributes
+    list.querySelectorAll('.fl-min-input, .fl-max-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const checkbox = e.target.closest('.sector-config-item').querySelector('.sector-config-check');
+            if (e.target.classList.contains('fl-min-input')) {
+                checkbox.dataset.flLower = e.target.value;
+            } else {
+                checkbox.dataset.flUpper = e.target.value;
+            }
         });
     });
 }
 
 function updateMapSectorsFromUI() {
-    const checks = document.querySelectorAll('.sector-config-check');
-    const selectedIds = Array.from(checks).filter(c => c.checked).map(c => c.value);
-    const filtered = (window.CURRENT_AIXM_SECTORS || []).filter(s => selectedIds.includes(s.sector_id));
-    visualizeSectors(filtered, false); // false = don't fitBounds on every toggle
+    if (!configSectorsLayer) return;
+    configSectorsLayer.clearLayers();
+    const bounds = L.latLngBounds();
+
+    // 1. Collect and visualize sectors
+    const sectorChecks = document.querySelectorAll('.sector-config-check:checked');
+    const selectedSectorIds = Array.from(sectorChecks).map(c => c.value);
+    const selectedSectors = (window.CURRENT_AIXM_SECTORS || []).filter(s => selectedSectorIds.includes(s.sector_id));
+
+    selectedSectors.forEach(s => {
+        if (s.polygon && s.polygon.length > 0) {
+            const latlngs = s.polygon.map(pt => [pt[0], pt[1]]);
+            const poly = L.polygon(latlngs, {
+                color: '#58a6ff',
+                weight: 2,
+                fillColor: '#58a6ff',
+                fillOpacity: 0.2
+            }).bindTooltip(`${s.sector_id}: ${s.name} (FL${s.fl_lower} - FL${s.fl_upper})`);
+            
+            configSectorsLayer.addLayer(poly);
+            latlngs.forEach(ll => bounds.extend(ll));
+        }
+    });
+
+    // 2. Collect and visualize airports
+    const airportChecks = document.querySelectorAll('.airport-config-check:checked');
+    airportChecks.forEach(cb => {
+        const id = cb.dataset.id;
+        const name = cb.dataset.name;
+        const lat = parseFloat(cb.dataset.lat);
+        const lon = parseFloat(cb.dataset.lon);
+
+        if (!isNaN(lat) && !isNaN(lon)) {
+            const circle = L.circleMarker([lat, lon], {
+                radius: 6,
+                fillColor: "#ffca28",
+                color: "#ffca28",
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).bindTooltip(`Airport Responsibility: ${id} (${name})`);
+            
+            configSectorsLayer.addLayer(circle);
+            bounds.extend([lat, lon]);
+        }
+    });
+
+    if (bounds.isValid()) {
+        configMap.fitBounds(bounds, { padding: [20, 20] });
+    }
+}
+
+function updateSelectAllState(type) {
+    const listId = type === 'sector' ? 'config-sector-list' : 'config-airport-list';
+    const checkAllId = type === 'sector' ? 'check-all-sectors' : 'check-all-airports';
+    const checkClass = type === 'sector' ? '.sector-config-check' : '.airport-config-check';
+    
+    const list = document.getElementById(listId);
+    const checkAll = document.getElementById(checkAllId);
+    if (!list || !checkAll) return;
+
+    const allChecks = list.querySelectorAll(checkClass);
+    if (allChecks.length === 0) {
+        checkAll.checked = false;
+        checkAll.indeterminate = false;
+        return;
+    }
+
+    const checkedCount = Array.from(allChecks).filter(c => c.checked).length;
+    const allChecked = checkedCount === allChecks.length;
+    const someChecked = checkedCount > 0 && !allChecked;
+
+    checkAll.checked = allChecked;
+    checkAll.indeterminate = someChecked;
 }
 
 async function loadExtraLayers() {
@@ -1266,50 +1554,123 @@ document.getElementById('btn-select-all-sectors')?.addEventListener('click', () 
 document.getElementById('btn-save-airspace-config')?.addEventListener('click', async () => {
     console.log("Save & Apply Config clicked");
     
-    const filePath = document.getElementById('config-aixm-path').value || configSelectedAixmFile;
+    const filePath = document.getElementById('config-aixm-path').value;
     const firId = document.getElementById('config-fir-select').value;
     const windowSize = document.getElementById('config-window-size').value;
+    const baselineCapacity = document.getElementById('config-baseline-capacity').value;
     const configName = document.getElementById('config-node-name').value;
-    
-    const statusEl = document.getElementById('config-save-status');
 
     if (!filePath || !firId) {
-        alert("Please load an AIXM file and select an FIR first.");
+        showToast("Please select AIXM file and FIR", "warning");
         return;
     }
 
+    // Collect selected sectors
+    const selectedSectors = [];
+    document.querySelectorAll('#config-sector-list .sector-config-check:checked').forEach(cb => {
+        selectedSectors.push({
+            id: cb.dataset.id,
+            fl_lower: parseInt(cb.dataset.flLower || 0),
+            fl_upper: parseInt(cb.dataset.flUpper || 660)
+        });
+    });
+
+    // Collect selected airports
+    const selectedAirports = [];
+    document.querySelectorAll('#config-airport-list .airport-config-check:checked').forEach(cb => {
+        selectedAirports.push({
+            id: cb.dataset.id,
+            name: cb.dataset.name,
+            lat: parseFloat(cb.dataset.lat),
+            lon: parseFloat(cb.dataset.lon)
+        });
+    });
+
+    const payload = {
+        file_path: filePath,
+        fir_id: firId,
+        sectors: selectedSectors,
+        airports: selectedAirports,
+        window_size: parseInt(windowSize),
+        baseline_capacity: parseInt(baselineCapacity),
+        config_name: configName
+    };
+
+    console.log("Saving configuration:", payload);
+    showToast("Saving configuration...", "info");
+
     try {
+        const statusEl = document.getElementById('config-save-status') || { set style(v) {}, set innerText(v) {} };
         statusEl.innerText = "Applying configuration and initializing node...";
         statusEl.style.color = "var(--accent)";
 
-        console.log(`Sending setup/configure request for FIR: ${firId}, Window: ${windowSize}, Name: ${configName}`);
-        
-        const res = await fetch('/api/setup/configure', {
+        const response = await fetch(`/api/config/apply_aixm`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                file_path: filePath,
-                fir_id: firId,
-                window_size: parseInt(windowSize),
-                config_name: configName
-            })
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-API-Key': window.API_KEY || ''
+            },
+            body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        const data = await response.json();
 
         if (data.status === 'success') {
             statusEl.innerText = "Success! Node configured. Reloading dashboard...";
             statusEl.style.color = "var(--success)";
             appendLog('system', `FMP Node configured for ${firId} (${configName}). RESTARTING.`);
+            showToast("Configuration applied successfully", "success");
             setTimeout(() => window.location.reload(), 1500);
         } else {
-            statusEl.innerText = "Error: " + data.message;
+            const msg = data.message || (data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : "Unknown error");
+            statusEl.innerText = "Error: " + msg;
             statusEl.style.color = "var(--danger)";
+            showToast(`Error: ${msg}`, "error");
         }
     } catch (e) {
-        statusEl.innerText = "Connection failed.";
+        const errorMsg = e.message || "Unknown error occurred";
+        const statusEl = document.getElementById('config-save-status') || { set style(v) {}, set innerText(v) {} };
+        statusEl.innerText = "Error: " + errorMsg;
         statusEl.style.color = "var(--danger)";
+        console.error("Save config error:", e);
+        showToast(`Save failed: ${errorMsg}`, "error");
     }
 });
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        backdrop-filter: blur(12px);
+        padding: 12px 24px;
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        z-index: 10000;
+        animation: fadeIn 0.3s ease-out;
+    `;
+    
+    const colors = {
+        'info': 'var(--accent)',
+        'success': 'var(--success)',
+        'warning': 'var(--warning)',
+        'error': 'var(--danger)'
+    };
+    
+    toast.style.borderLeft = `4px solid ${colors[type] || colors.info}`;
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
 async function fetchRadRules() {
     try {
         const res = await fetch('/api/rad');
@@ -1453,7 +1814,8 @@ document.getElementById('btn-initialize-node')?.addEventListener('click', async 
             statusMsg.style.color = "var(--success)";
             setTimeout(() => window.location.reload(), 2000);
         } else {
-            statusMsg.innerText = "Initialization failed: " + data.message;
+            const msg = data.message || (data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : "Unknown error");
+            statusMsg.innerText = "Initialization failed: " + msg;
             statusMsg.style.color = "var(--danger)";
         }
     } catch (e) {
@@ -1477,7 +1839,42 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetId = btn.getAttribute('data-target');
             document.getElementById(targetId).classList.add('active');
             
+            // Resize Chart.js if the flow tab is activated
+            if (targetId === 'tab-flow' && demandChart) {
+                demandChart.resize();
+            }
+
             if (targetId === 'tab-rad') fetchRadRules();
+            if (targetId === 'tab-config') {
+                initAirspaceConfigTab(); // Initialize the Map
+                initConfigTab();         // Load the Data
+            }
+        });
+    });
+
+    // Initialize the app workspace and then the components
+    initChart();
+    
+    initWorkspace().then(() => {
+        // After workspace is initialized (metadata fetched), pre-fill the config tab
+        initConfigTab();
+        // Start WebSocket ONLY after ACTIVE_NODE_ID is set
+        initWebSocket();
+    });
+
+    // Global Select All listeners
+    document.getElementById('check-all-sectors')?.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        document.querySelectorAll('.sector-config-check').forEach(cb => {
+            cb.checked = isChecked;
+        });
+        updateMapSectorsFromUI();
+    });
+
+    document.getElementById('check-all-airports')?.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        document.querySelectorAll('.airport-config-check').forEach(cb => {
+            cb.checked = isChecked;
         });
     });
 });

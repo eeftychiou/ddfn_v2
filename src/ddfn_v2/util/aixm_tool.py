@@ -211,7 +211,13 @@ class AIXMParser:
         return sectors
 
     def _infer_parent_fir(self, code_id: str) -> str:
-        if code_id and len(code_id) >= 4: return code_id[:4]
+        if not code_id: return "UNKNOWN"
+        # Heuristic for Nicosia, Beirut, Tel Aviv, Cairo from specific AIXM file patterns
+        if code_id.startswith("LC"): return "LCCC"
+        if code_id.startswith("OL"): return "OLBB"
+        if code_id.startswith("LL"): return "LLLL"
+        if code_id.startswith("HE"): return "HECC"
+        if len(code_id) >= 4: return code_id[:4]
         return "UNKNOWN"
 
     def extract_airports(self, fir_id: Optional[str] = None) -> List[AIXMAirport]:

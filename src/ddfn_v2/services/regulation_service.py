@@ -34,7 +34,11 @@ class RegulationService:
         # 1. FPFS Sorting: Sort by their original estimated time over the sector
         affected_flights.sort(key=get_eto_for_sector)
         
-        slot_interval = dt.timedelta(minutes=60 / capacity_per_hour)
+        if capacity_per_hour <= 0:
+            # Total closure. We'll use a very large interval to push flights out of the current window.
+            slot_interval = dt.timedelta(hours=24)
+        else:
+            slot_interval = dt.timedelta(minutes=60 / capacity_per_hour)
         slots = []
         last_assigned_slot = None
 
@@ -43,7 +47,11 @@ class RegulationService:
             
             # Slot cannot be before the regulation start time or before the flight's ETO
             if last_assigned_slot is None:
-                assigned_slot = max(eto, start_dt)
+                # If capacity is 0 (total closure), the first available slot is end_dt
+                if capacity_per_hour <= 0:
+                    assigned_slot = max(eto, end_dt)
+                else:
+                    assigned_slot = max(eto, start_dt)
             else:
                 next_min_slot = last_assigned_slot + slot_interval
                 assigned_slot = max(eto, next_min_slot)

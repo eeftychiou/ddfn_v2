@@ -12,6 +12,7 @@ import uvicorn
 from typing import List, Dict, Set, Optional
 from ddfn_v2.core.network import NetworkClient
 from ddfn_v2.core.node import DDFN_Node
+from ddfn_v2.core.config import config
 from ddfn_v2.core.models import FlightSummary, DistributedFlowConsensus, TimeWindow, from_dict, SlotDetails, FlightPlanFiled
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
@@ -42,8 +43,19 @@ class AOCNode(DDFN_Node):
                     self.logger.info(f"Flight {slot.flight_id} received CTOT delay: +{slot.delay} mins. CTOT: {slot.ctot}")
 
     async def _handle_inventory(self, message: dict):
-         # In a real system, the AOC uses this to update its internal fleet tracking
-         pass
+        """Processes an AIRSPACE_INVENTORY_UPDATE message to track local fleet status."""
+        for flight_data in message.get("flights", []):
+            fid = flight_data.get("flight_id")
+            # If this flight is in our managed fleet
+            for fleet_f in self.flights:
+                if fleet_f["flight_id"] == fid:
+                    fleet_f["status"] = flight_data.get("status")
+                    fleet_f["entry_point"] = flight_data.get("entry_point")
+                    fleet_f["exit_point"] = flight_data.get("exit_point")
+                    fleet_f["eta_entry"] = flight_data.get("eta_entry")
+                    fleet_f["eta_exit"] = flight_data.get("eta_exit")
+                    self.logger.debug(f"Updated tracking for fleet flight {fid}: {fleet_f['status']}")
+                    break
          
     async def _handle_flight_plan_filed(self, message: dict):
         fp = from_dict(FlightPlanFiled, message)
@@ -112,6 +124,19 @@ class AOCNode(DDFN_Node):
 app = FastAPI()
 node = None
 
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for AOC node.
+    """
+    return {
+        "status": "healthy",
+        "service": "aoc",
+        "node_id": node.node_id if node else "unknown",
+        "flights_managed": len(node.flights) if node else 0,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
 @app.get("/metrics")
 async def get_metrics():
     return {"node_id": node.node_id, "flights_managed": len(node.flights)}
@@ -120,6 +145,15 @@ async def get_metrics():
 async def api_ready(flight_id: str):
     await node.send_ready_message(flight_id)
     return {"status": "success", "message": f"REA sent for {flight_id}"}
+
+@app.post("/api/flights/schedule")
+async def api_schedule_flights(flights: List[Dict]):
+    """Dynamically adds flights to the AOC's managed fleet and files plans."""
+    for f in flights:
+        if not any(managed["flight_id"] == f["flight_id"] for managed in node.flights):
+            node.flights.append(f)
+            await node.send_flight_plan(f)
+    return {"status": "success", "count": len(flights)}
     
 
 async def run_aoc_async(node_id: str, broker_url: str, port: int, aixm_path: Optional[str] = None):
@@ -132,12 +166,15 @@ async def run_aoc_async(node_id: str, broker_url: str, port: int, aixm_path: Opt
     network = NetworkClient(broker_url)
     node = AOCNode(node_id, network)
     
-    # Pre-populate some mock flights for this AOC
+    # Pre-populate mock flights ONLY if explicitly enabled or if no other datasource is available
     from ddfn_v2.services import schedule
     import os
-    # Adjusted path for data/real_schedule.json
-    schedule_path = "data/real_schedule.json"
-    if os.path.exists(schedule_path):
+    
+    # Check if we should use mock schedule (default to True for demo purposes if file exists)
+    use_mock = os.environ.get("DDFN_AOC_USE_MOCK", "true").lower() == "true"
+    schedule_path = os.path.join(config.DATA_DIR, "real_schedule.json")
+    
+    if use_mock and os.path.exists(schedule_path):
         schedule.load_schedule_from_file(schedule_path)
         
     raw_flights = schedule.get_flights_for_airline(node_id)

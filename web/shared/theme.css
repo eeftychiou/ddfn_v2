@@ -1,0 +1,261 @@
+/**
+ * Theme CSS Variables for DDFN Dashboards
+ * Supports both light and dark modes
+ */
+
+/* Light theme (default) */
+:root {
+    /* Background colors */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --bg-tertiary: #e0e0e0;
+    --bg-card: #ffffff;
+    --bg-hover: #f0f0f0;
+    
+    /* Text colors */
+    --text-primary: #212121;
+    --text-secondary: #757575;
+    --text-muted: #9e9e9e;
+    --text-inverse: #ffffff;
+    
+    /* Accent colors */
+    --accent-primary: #1976d2;
+    --accent-secondary: #1565c0;
+    --accent-light: #64b5f6;
+    --accent-dark: #0d47a1;
+    
+    /* Status colors */
+    --success: #4caf50;
+    --success-light: #81c784;
+    --warning: #ff9800;
+    --warning-light: #ffb74d;
+    --danger: #f44336;
+    --danger-light: #e57373;
+    --info: #2196f3;
+    --info-light: #64b5f6;
+    
+    /* Border and shadow */
+    --border-color: #e0e0e0;
+    --border-light: #eeeeee;
+    --shadow: rgba(0, 0, 0, 0.1);
+    --shadow-lg: rgba(0, 0, 0, 0.15);
+    
+    /* Spacing */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    
+    /* Border radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-normal: 250ms ease;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+    /* Background colors */
+    --bg-primary: #121212;
+    --bg-secondary: #1e1e1e;
+    --bg-tertiary: #2d2d2d;
+    --bg-card: #1e1e1e;
+    --bg-hover: #2a2a2a;
+    
+    /* Text colors */
+    --text-primary: #ffffff;
+    --text-secondary: #b0b0b0;
+    --text-muted: #808080;
+    --text-inverse: #121212;
+    
+    /* Accent colors */
+    --accent-primary: #90caf9;
+    --accent-secondary: #64b5f6;
+    --accent-light: #bbdefb;
+    --accent-dark: #42a5f5;
+    
+    /* Status colors */
+    --success: #81c784;
+    --success-light: #a5d6a7;
+    --warning: #ffb74d;
+    --warning-light: #ffcc80;
+    --danger: #e57373;
+    --danger-light: #ef9a9a;
+    --info: #64b5f6;
+    --info-light: #90caf9;
+    
+    /* Border and shadow */
+    --border-color: #404040;
+    --border-light: #333333;
+    --shadow: rgba(0, 0, 0, 0.3);
+    --shadow-lg: rgba(0, 0, 0, 0.5);
+}
+
+/* Base styles */
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+
+/* Card styles */
+.card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 2px 4px var(--shadow);
+    transition: background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.card:hover {
+    box-shadow: 0 4px 8px var(--shadow-lg);
+}
+
+/* Button styles */
+.btn {
+    background-color: var(--accent-primary);
+    color: var(--text-inverse);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    cursor: pointer;
+    transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.btn:hover {
+    background-color: var(--accent-secondary);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+    background-color: var(--border-color);
+}
+
+/* Input styles */
+input, select, textarea {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-sm);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+/* Table styles */
+table {
+    background-color: var(--bg-card);
+    border-collapse: collapse;
+    width: 100%;
+}
+
+th, td {
+    border-bottom: 1px solid var(--border-color);
+    padding: var(--spacing-sm) var(--spacing-md);
+    text-align: left;
+}
+
+th {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+tr:hover {
+    background-color: var(--bg-hover);
+}
+
+/* Navigation styles */
+.nav {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: var(--spacing-sm) var(--spacing-md);
+    transition: color var(--transition-fast);
+}
+
+.nav a:hover, .nav a.active {
+    color: var(--accent-primary);
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.badge-success {
+    background-color: var(--success);
+    color: var(--text-inverse);
+}
+
+.badge-warning {
+    background-color: var(--warning);
+    color: var(--text-inverse);
+}
+
+.badge-danger {
+    background-color: var(--danger);
+    color: var(--text-inverse);
+}
+
+.badge-info {
+    background-color: var(--info);
+    color: var(--text-inverse);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-sm);
+    cursor: pointer;
+    font-size: 1.25rem;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.theme-toggle:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--accent-primary);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}

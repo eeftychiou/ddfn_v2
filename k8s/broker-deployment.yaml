@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broker
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/instance: broker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: broker
+  template:
+    metadata:
+      labels:
+        app: broker
+        app.kubernetes.io/component: broker
+    spec:
+      containers:
+      - name: broker
+        image: ddfn-v2:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "ddfn_v2.core.broker"]
+        ports:
+        - containerPort: 8001
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: ddfn-config
+        - secretRef:
+            name: ddfn-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: data
+          mountPath: /app/data
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: broker
+  namespace: ddfn-v2
+  labels:
+    app.kubernetes.io/name: ddfn-v2
+    app.kubernetes.io/component: broker
+spec:
+  selector:
+    app: broker
+  ports:
+  - port: 8001
+    targetPort: 8001
+    name: http
+  type: ClusterIP

@@ -4,7 +4,7 @@ import argparse
 import datetime
 import uuid
 import dataclasses
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Security
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -13,6 +13,8 @@ import uvicorn
 import os
 
 from ddfn_v2.core.network import NetworkClient
+from ddfn_v2.core.auth import verify_api_key
+from ddfn_v2.core.config import config
 from ddfn_v2.eng import airspace
 from ddfn_v2.util.aixm_tool import AIXMParser
 
@@ -25,7 +27,7 @@ network_client = None
 async def lifespan(app: FastAPI):
     global network_client
     # Connect to the broker during startup
-    broker_url = os.environ.get("BROKER_URL", "ws://127.0.0.1:8001/ws")
+    broker_url = os.environ.get("BROKER_URL", config.BROKER_URL)
     network_client = NetworkClient(broker_url)
     await network_client.connect("SIM_MANAGER")
     logger.info("Connected to SWIM Broker.")
@@ -34,6 +36,18 @@ async def lifespan(app: FastAPI):
     logger.info("Disconnecting from SWIM Broker.")
 
 app = FastAPI(title="DDFN Simulation Manager", lifespan=lifespan)
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for Sim Manager.
+    """
+    return {
+        "status": "healthy",
+        "service": "sim_manager",
+        "broker_connected": network_client is not None and hasattr(network_client, 'websocket') and network_client.websocket is not None,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
 
 # Mount static files for the dashboard
 # Project root is 3 levels up from src/ddfn_v2/services/
@@ -80,7 +94,7 @@ async def get_sectors():
         })
     return {"status": "success", "sectors": sectors}
 
-@app.post("/api/flights/inject")
+@app.post("/api/flights/inject", dependencies=[Security(verify_api_key)])
 async def inject_flight(req: FlightInjectionRequest):
     """API endpoint called by the UI to inject a new flight plan."""
     now = datetime.datetime.now(datetime.timezone.utc)
