@@ -58,6 +58,16 @@ This document describes the Decentralized Demand & Capacity Balancing (DDFN) pro
 ```
 *Note: The Broker contains zero business logic. It simply distributes messages on topics like `ddfn.capacity.state`, `ddfn.flow.negotiation`, etc.*
 
+## 2.1. Security & Data Integrity Design Principles
+
+To maintain robustness across the decentralized SWIM network, the following security and integrity principles are enforced:
+
+- **Input Sanitization:** All user-provided file uploads (e.g., AIXM data) are sanitized. Uploaded filenames are stripped of path components and stored with UUID-based names to prevent path traversal attacks.
+- **Secret Management:** API keys and other secrets are never logged to standard output. Auto-generated keys emit a generic warning without revealing the key value.
+- **Audit Logging:** All significant state changes (capacity overrides, consensus proposals, and HITL approvals) are written to an append-only, tamper-evident audit log. The audit subsystem uses asynchronous I/O to avoid blocking the main event loop.
+- **Idempotency & Deduplication:** Every message and consensus proposal carries a unique identifier. Nodes persist processed IDs to prevent duplicate processing, ensuring deterministic outcomes even across restarts.
+- **CTOT Integrity:** The CASA (Collaborative Air Traffic Flow Management Slot Allocation) algorithm assigns CTOTs based on the computed `assigned_slot` time. This ensures that even in-flight aircraft receive correct, forward-looking departure times rather than erroneous recalculations from their original `departure_time`.
+
 ## 3. Core Decentralized Components
 
 ### 3.1. Broker (`broker.py`)

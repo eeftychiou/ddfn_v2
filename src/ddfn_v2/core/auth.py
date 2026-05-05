@@ -19,7 +19,8 @@ def get_api_key() -> str:
     if not key:
         # Generate a secure key if not set (log warning)
         key = secrets.token_urlsafe(32)
-        print(f"WARNING: DDFN_API_KEY not set. Generated temporary key: {key}")
+        import logging
+        logging.getLogger("auth").warning("DDFN_API_KEY not set. A temporary key was generated. Set DDFN_API_KEY to suppress this warning.")
     return key
 
 API_KEY = get_api_key()

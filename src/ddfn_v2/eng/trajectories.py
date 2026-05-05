@@ -22,6 +22,9 @@ import ddfn_v2.eng.airspace as airspace_mod
 from ddfn_v2.eng.airspace import WAYPOINTS, SECTORS, AIRWAYS, Waypoint, SectorGeometry
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger("trajectories")
 
 # ---------------------------------------------------------------------------
 # 1. Data structures
@@ -146,21 +149,21 @@ def _parse_route(origin: str, route_string: str, destination: str, db: Dict[str,
     tokens = route_string.upper().split()
     
     # Departure
-    print(f"DEBUG: _parse_route - origin={repr(origin)} ID={id(db)} count={len(db)} LCLK_in_db={'LCLK' in db}")
+    logger.debug(f"_parse_route - origin={repr(origin)} count={len(db)}")
     if origin in db:
         result.append(db[origin])
     else:
-        print(f"DEBUG: _parse_route - origin {repr(origin)} NOT in db! Keys sample: {list(db.keys())[:5]}")
+        logger.debug(f"_parse_route - origin {repr(origin)} NOT in db! Keys sample: {list(db.keys())[:5]}")
 
     for i, token in enumerate(tokens):
         if token in ("DCT", "N/A", ""):
             continue
-        print(f"DEBUG: _parse_route checking token={repr(token)} in_db={token in db}")
+        logger.debug(f"_parse_route checking token={repr(token)} in_db={token in db}")
         if token in db:
             if not result or result[-1].ident != token:
                 result.append(db[token])
         else:
-            print(f"DEBUG: _parse_route - token {repr(token)} NOT in db! Keys sample: {list(db.keys())[:5]}")
+            logger.debug(f"_parse_route - token {repr(token)} NOT in db! Keys sample: {list(db.keys())[:5]}")
             # First unknown token = EXIT POINT of this FIR's knowledge
             exit_idx = len(result) - 1
             rem_route = " ".join(tokens[i:])
@@ -314,25 +317,25 @@ class TrajectorySolver:
         sector_db: Optional[Dict[str, SectorGeometry]] = None,
         altitudes: Optional[List[int]] = None
     ) -> Tuple[List[SectorEntry], Optional[datetime]]:
-        print(f"DEBUG: Entering compute_sector_etos with {len(waypoints)} waypoints.")
+        logger.debug(f"Entering compute_sector_etos with {len(waypoints)} waypoints.")
         if len(waypoints) < 2:
-            print("DEBUG: compute_sector_etos - Not enough waypoints!")
+            logger.debug("compute_sector_etos - Not enough waypoints!")
             return [], None
 
         db = sector_db if sector_db is not None else SECTORS
-        print(f"DEBUG: compute_sector_etos - total sectors in db: {len(db)}, db_ID: {id(db)}, SECTORS_ID: {id(SECTORS)}")
+        logger.debug(f"compute_sector_etos - total sectors in db: {len(db)}")
         entries: Dict[str, SectorEntry] = {}  # sector_id -> first crossing
         elapsed_seconds = 0.0
         
         # Performance: Spatial filtering
         traj_bbox = _get_bbox(waypoints)
-        print(f"DEBUG: traj_bbox: {traj_bbox}")
+        logger.debug(f"traj_bbox: {traj_bbox}")
         candidate_sectors = []
         for i, (sid, sgeo) in enumerate(db.items()):
             s_bbox = _get_bbox(sgeo.polygon)
             overlap = _bbox_overlap(traj_bbox, s_bbox)
             if i < 3:
-                print(f"DEBUG: sector {sid} bbox: {s_bbox}, overlap: {overlap}")
+                logger.debug(f"sector {sid} bbox: {s_bbox}, overlap: {overlap}")
             if overlap:
                 candidate_sectors.append((sid, sgeo))
         

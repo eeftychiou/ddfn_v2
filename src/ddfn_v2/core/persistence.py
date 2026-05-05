@@ -1,4 +1,4 @@
-import sqlite3
+import aiosqlite
 import json
 import logging
 from datetime import datetime, timezone
@@ -7,25 +7,29 @@ from typing import List, Dict, Any, Optional
 class PersistenceManager:
     """
     Handles SQLite-based persistence for DDFN node state.
+    Uses aiosqlite for non-blocking async I/O.
     Ensures that manual overrides and message IDs (for idempotency) survive restarts.
     """
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.logger = logging.getLogger("Persistence")
-        self._init_db()
 
-    def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+    async def _init_db(self):
+        """Initialize database tables. Call once at startup."""
+        async with aiosqlite.connect(self.db_path) as conn:
+            # Enable WAL mode for better concurrency and performance
+            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute("PRAGMA synchronous=NORMAL")
+
             # Idempotency table
-            cursor.execute("""
+            await conn.execute("""
                 CREATE TABLE IF NOT EXISTS idempotency (
                     message_id TEXT PRIMARY KEY,
                     timestamp TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             # Manual Overrides table
-            cursor.execute("""
+            await conn.execute("""
                 CREATE TABLE IF NOT EXISTS manual_overrides (
                     override_id TEXT PRIMARY KEY,
                     sector_id TEXT,
@@ -36,49 +40,53 @@ class PersistenceManager:
                 )
             """)
             # KV Store for generic configuration/state
-            cursor.execute("""
+            await conn.execute("""
                 CREATE TABLE IF NOT EXISTS kv_store (
                     key TEXT PRIMARY KEY,
                     value TEXT
                 )
             """)
-            conn.commit()
+            await conn.commit()
 
     # --- Idempotency ---
-    def is_processed(self, message_id: str) -> bool:
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM idempotency WHERE message_id = ?", (message_id,))
-            return cursor.fetchone() is not None
+    async def is_processed(self, message_id: str) -> bool:
+        async with aiosqlite.connect(self.db_path) as conn:
+            cursor = await conn.execute(
+                "SELECT 1 FROM idempotency WHERE message_id = ?", (message_id,)
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            return row is not None
 
-    def mark_processed(self, message_id: str):
+    async def mark_processed(self, message_id: str):
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("INSERT OR IGNORE INTO idempotency (message_id) VALUES (?)", (message_id,))
-                conn.commit()
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute(
+                    "INSERT OR IGNORE INTO idempotency (message_id) VALUES (?)",
+                    (message_id,)
+                )
+                await conn.commit()
         except Exception as e:
             self.logger.error(f"Failed to mark message {message_id} as processed: {e}")
 
-    def get_processed_count(self) -> int:
+    async def get_processed_count(self) -> int:
         """Returns the total number of processed messages (idempotency entries)."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM idempotency")
-                row = cursor.fetchone()
+            async with aiosqlite.connect(self.db_path) as conn:
+                cursor = await conn.execute("SELECT COUNT(*) FROM idempotency")
+                row = await cursor.fetchone()
+                await cursor.close()
                 return row[0] if row else 0
         except Exception as e:
             self.logger.error(f"Failed to get processed count: {e}")
             return 0
 
     # --- Manual Overrides ---
-    def save_override(self, override: Dict[str, Any]):
+    async def save_override(self, override: Dict[str, Any]):
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT OR REPLACE INTO manual_overrides 
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    INSERT OR REPLACE INTO manual_overrides
                     (override_id, sector_id, start_time, end_time, capacity, reason)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (
@@ -89,32 +97,34 @@ class PersistenceManager:
                     override["capacity"],
                     override["reason"]
                 ))
-                conn.commit()
+                await conn.commit()
         except Exception as e:
             self.logger.error(f"Failed to save override: {e}")
 
-    def remove_override(self, override_id: str):
+    async def remove_override(self, override_id: str):
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM manual_overrides WHERE override_id = ?", (override_id,))
-                conn.commit()
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute(
+                    "DELETE FROM manual_overrides WHERE override_id = ?",
+                    (override_id,)
+                )
+                await conn.commit()
         except Exception as e:
             self.logger.error(f"Failed to remove override {override_id}: {e}")
 
-    def load_overrides(self) -> Dict[str, List[Dict[str, Any]]]:
+    async def load_overrides(self) -> Dict[str, List[Dict[str, Any]]]:
         overrides = {}
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM manual_overrides")
-                rows = cursor.fetchall()
+            async with aiosqlite.connect(self.db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                cursor = await conn.execute("SELECT * FROM manual_overrides")
+                rows = await cursor.fetchall()
+                await cursor.close()
                 for row in rows:
                     sector_id = row["sector_id"]
                     if sector_id not in overrides:
                         overrides[sector_id] = []
-                    
+
                     ovr = {
                         "id": row["override_id"],
                         "sector_id": row["sector_id"],
@@ -129,27 +139,32 @@ class PersistenceManager:
         return overrides
 
     # --- KV Store ---
-    def set_config(self, key: str, value: Any):
+    async def set_config(self, key: str, value: Any):
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", (key, json.dumps(value)))
-                conn.commit()
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute(
+                    "INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)",
+                    (key, json.dumps(value))
+                )
+                await conn.commit()
         except Exception as e:
             self.logger.error(f"Failed to set config {key}: {e}")
 
-    def get_config(self, key: str, default: Any = None) -> Any:
+    async def get_config(self, key: str, default: Any = None) -> Any:
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT value FROM kv_store WHERE key = ?", (key,))
-                row = cursor.fetchone()
+            async with aiosqlite.connect(self.db_path) as conn:
+                cursor = await conn.execute(
+                    "SELECT value FROM kv_store WHERE key = ?",
+                    (key,)
+                )
+                row = await cursor.fetchone()
+                await cursor.close()
                 if row:
                     return json.loads(row[0])
         except Exception as e:
             self.logger.error(f"Failed to get config {key}: {e}")
         return default
 
-    def close(self):
-        """No-op for now as we use context managers per call."""
+    async def close(self):
+        """No-op for aiosqlite as we use context managers per call."""
         pass

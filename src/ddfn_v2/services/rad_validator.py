@@ -43,7 +43,8 @@ class RADValidator:
                         if "active" in r: r["active"] = bool(r["active"])
                         self.rules.append(RADRule(**r))
             except Exception as e:
-                print(f"Failed to load RAD rules: {e}")
+                import logging
+                logging.getLogger("rad_validator").error(f"Failed to load RAD rules: {e}")
         
         if not self.rules:
             # Fallback to defaults if file missing or empty

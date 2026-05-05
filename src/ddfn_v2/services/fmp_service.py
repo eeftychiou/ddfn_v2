@@ -81,11 +81,8 @@ class FMPNode(DDFN_Node):
         # --- Persistence Initialize ---
         db_path = os.path.join(CONFIG_DIR, f"{node_id}_state.db")
         self.persistence = PersistenceManager(db_path)
-        
-        # Load manual overrides from persistent storage
-        self.manual_overrides = self.persistence.load_overrides()
-        
-        # Note: load_local_config is now async and will be called in start()
+        self.manual_overrides: Dict[str, List[Dict]] = {}
+        # Note: load_overrides and load_local_config are async and will be called in start()
 
     async def load_local_config(self):
         """Load airspace configuration from local storage (async)."""
@@ -332,6 +329,10 @@ class FMPNode(DDFN_Node):
         return False
 
     async def start(self):
+        # Initialize persistence DB (async SQLite with WAL mode)
+        await self.persistence._init_db()
+        # Load manual overrides from persistent storage
+        self.manual_overrides = await self.persistence.load_overrides()
         # Load local configuration on startup
         await self.load_local_config()
         
@@ -599,7 +600,7 @@ class FMPNode(DDFN_Node):
 
     async def handle_manual_override(self, msg: dict):
         """Called when UI dictates a capacity constraint (The V2 UI Builder)"""
-        print(f"DEBUG: {self.node_id} handle_manual_override received msg for {msg.get('target_node')}")
+        self.logger.debug(f"handle_manual_override received msg for {msg.get('target_node')}")
         if msg.get("target_node") == self.node_id:
             sector_id = msg.get("sector")
             if not msg.get("capacity") and msg.get("capacity") != 0: return
@@ -642,7 +643,7 @@ class FMPNode(DDFN_Node):
                     "reason": reason
                 }
                 self.manual_overrides[sector_id].append(new_override)
-                self.persistence.save_override(new_override)
+                await self.persistence.save_override(new_override)
 
             # Check if this override triggers CASA immediately
             for s in self.sectors:
@@ -666,9 +667,9 @@ class FMPNode(DDFN_Node):
                     window_duration_mins = (end_dt - start_dt).total_seconds() / 60.0
                     effective_window_cap = new_cap * (window_duration_mins / 60.0)
 
-                    print(f"DEBUG: {self.node_id} Sector {sector_id} has {len(affected_flights)} affected flights. Effective window cap: {effective_window_cap}")
+                    self.logger.debug(f"Sector {sector_id} has {len(affected_flights)} affected flights. Effective window cap: {effective_window_cap}")
                     if len(affected_flights) > effective_window_cap:
-                        print(f"DEBUG: {self.node_id} Demand > Capacity! Running CASA...")
+                        self.logger.debug(f"Demand > Capacity! Running CASA...")
                         self.logger.info(f"Demand {len(affected_flights)} > Effective Window Capacity {effective_window_cap:.1f} (Rate: {new_cap}/hr). Running CASA...")
                         
                         slots = RegulationService.run_casa(
@@ -727,7 +728,7 @@ class FMPNode(DDFN_Node):
                         if ovr.get("id") != override_id
                     ]
                     if len(self.manual_overrides[sector_id]) < initial_count:
-                        self.persistence.remove_override(override_id)
+                        await self.persistence.remove_override(override_id)
                         self.logger.info(f"FMP Removed Override: {override_id} from {sector_id}.")
                     else:
                         self.logger.warning(f"FMP Override not found: {override_id} for {sector_id}.")
@@ -735,7 +736,7 @@ class FMPNode(DDFN_Node):
     async def handle_set_measure_window(self, msg):
         if msg.get("target_node") == self.node_id:
             val = int(msg.get("minutes", 60))
-            print(f"DEBUG: handle_set_measure_window setting window to {val}")
+            self.logger.debug(f"handle_set_measure_window setting window to {val}")
             self._measure_window_minutes = val
             self.logger.info(f"FMP adjusted capacity measurement window to {val} minutes.")
             await self.save_local_config()
@@ -910,7 +911,7 @@ class FMPNode(DDFN_Node):
              
         # Idempotency
         prop_id = msg.get("proposal_id", "")
-        if self.persistence.is_processed(prop_id):
+        if await self.persistence.is_processed(prop_id):
             return
 
         warn_id = msg.get("referencing_warning_id")
@@ -929,7 +930,7 @@ class FMPNode(DDFN_Node):
         
         if relevant:
             self.logger.info(f"Ripple Proposal received from {originator} for {len(slots)} flights. Informing local HITL.")
-            self.persistence.mark_processed(prop_id)
+            await self.persistence.mark_processed(prop_id)
             
             # Store in pending warnings so HITL can approve it
             self.pending_warnings[warn_id] = {
@@ -1009,11 +1010,11 @@ class FMPNode(DDFN_Node):
     async def handle_consensus(self, msg):
         cid = msg.get("consensus_id", "")
         # --- Idempotency: skip replayed consensus ---
-        if self.persistence.is_processed(cid):
+        if await self.persistence.is_processed(cid):
             return
             
         async with self._state_lock:
-            self.persistence.mark_processed(cid)
+            await self.persistence.mark_processed(cid)
             
             # PHASE 25: Sync local FDPS trajectories with the agreed CTOTs
             slot_table = msg.get("slot_table", [])
@@ -1379,18 +1380,42 @@ async def main():
 
     @app.post("/api/aixm/upload")
     async def api_upload_aixm(file: UploadFile = File(...)):
-        """Handle AIXM file upload and save it locally for processing."""
-        upload_dir = "uploads"
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, file.filename)
+        """Handle AIXM file upload and save it locally for processing.
+        
+        Security: filenames are sanitized to prevent path traversal attacks.
+        """
+        import uuid
+        from pathlib import Path
+        
+        upload_dir = Path(config.UPLOADS_DIR)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # SECURITY: Strip path components and sanitize filename
+        safe_name = Path(file.filename or "upload").name
+        # Replace any non-alphanumeric (except dot, dash, underscore) to prevent injection
+        safe_name = "".join(c for c in safe_name if c.isalnum() or c in "._-")
+        if not safe_name:
+            safe_name = "upload"
+        
+        # Generate UUID-based filename to prevent overwrites and enumeration
+        file_ext = Path(safe_name).suffix.lower()
+        if file_ext not in {".xml", ".aixm", ".txt", ".json"}:
+            return {"status": "error", "message": f"Invalid file extension: {file_ext}. Allowed: .xml, .aixm, .txt, .json"}
+        
+        unique_name = f"{uuid.uuid4().hex}{file_ext}"
+        file_path = upload_dir / unique_name
         
         try:
+            content = await file.read()
+            # Basic size check (100MB max)
+            if len(content) > 100 * 1024 * 1024:
+                return {"status": "error", "message": "File too large (max 100MB)"}
+            
             with open(file_path, "wb") as buffer:
-                content = await file.read()
                 buffer.write(content)
             
-            node.logger.info(f"API: AIXM file uploaded to {file_path}")
-            return {"status": "success", "file_path": file_path}
+            node.logger.info(f"API: AIXM file uploaded to {file_path} (original: {safe_name})")
+            return {"status": "success", "file_path": str(file_path), "original_name": safe_name}
         except Exception as e:
             node.logger.error(f"Upload failure: {e}")
             return {"status": "error", "message": str(e)}

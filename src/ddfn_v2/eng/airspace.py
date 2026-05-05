@@ -12,6 +12,9 @@ All coordinates are (lat, lon) in decimal degrees. WGS-84.
 
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict, Optional, Tuple
+import logging
+
+logger = logging.getLogger("airspace")
 
 # ---------------------------------------------------------------------------
 # 1. Waypoint Database (ICAO published positions)
@@ -157,12 +160,12 @@ def load_from_aixm(file_path: str):
     
     if WAYPOINTS:
         first_wpt = next(iter(WAYPOINTS.values()))
-        print(f"DEBUG: Loaded {len(WAYPOINTS)} waypoints. Sample: {first_wpt.ident} {first_wpt.type}")
+        logger.info(f"Loaded {len(WAYPOINTS)} waypoints. Sample: {first_wpt.ident} {first_wpt.type}")
     if SECTORS:
         first_sec = next(iter(SECTORS.values()))
-        print(f"DEBUG: Loaded {len(SECTORS)} sectors. Sample: {first_sec.sector_id} in FIR {first_sec.fir}")
+        logger.info(f"Loaded {len(SECTORS)} sectors. Sample: {first_sec.sector_id} in FIR {first_sec.fir}")
         
-    print(f"Loaded {len(aixm_sectors)} sectors, {len(aixm_waypoints)} waypoints, {len(aixm_airports)} airports, and {len(aixm_routes)} route segments from {file_path}")
+    logger.info(f"Loaded {len(aixm_sectors)} sectors, {len(aixm_waypoints)} waypoints, {len(aixm_airports)} airports, and {len(aixm_routes)} route segments from {file_path}")
 
 def get_fir_sectors(fir_id: str) -> List[dict]:
     """Helper to return only sectors belonging to a specific FIR."""

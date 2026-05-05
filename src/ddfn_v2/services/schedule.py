@@ -6,6 +6,9 @@ Used by FMPNodes, AirportNodes, and AOCNodes to ensure consistency.
 """
 
 from typing import List, Tuple, Dict
+import logging
+
+logger = logging.getLogger("schedule")
 
 # Flight Plan Format: (Flight ID, Origin, Destination, Route String, Cruise FL, Departure Offset Mins)
 FLIGHT_SCHEDULE: List[Tuple[str, str, str, str, int, int]] = [
@@ -76,9 +79,9 @@ def load_schedule_from_file(path: str):
                     ]
                 else:
                     FLIGHT_SCHEDULE = [tuple(f) for f in data]
-                print(f"Loaded {len(FLIGHT_SCHEDULE)} flights from {path}")
+                logger.info(f"Loaded {len(FLIGHT_SCHEDULE)} flights from {path}")
         except Exception as e:
-            print(f"Failed to load schedule from {path}: {e}")
+            logger.error(f"Failed to load schedule from {path}: {e}")
 
 def get_flights_for_origin(origin_icao: str) -> List[Tuple]:
     """Returns flights starting at the given airport."""

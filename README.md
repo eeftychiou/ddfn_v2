@@ -9,9 +9,29 @@ This system is a truly decentralized, drop-in replacement for traditional centra
 - **AOC Nodes (`aoc_service.py`)**: Airline Operations Centers. These track fleet schedules, negotiate slot swaps, and validate routes.
 - **Simulation Manager (`sim_manager.py`)**: A centralized testing interface to dynamically inject new flights and view the global simulation state.
 
+## AIXM Parser Integration
+
+The DDFN v2 system integrates with the **AIXM Parser** library for parsing and visualizing aeronautical information exchange model (AIXM) 4.5 data. This enables:
+
+- **Airspace Visualization**: Parse and display airspace boundaries, sectors, and classifications
+- **Navaid Support**: Extract navigation aids (VOR, NDB, DME, TACAN) for route planning
+- **Route Analysis**: Parse airways and route segments for traffic flow analysis
+- **Airport Data**: Import airport locations, runways, and taxiway information
+
+### Supported AIXM Features
+
+The parser currently supports:
+- **Airspace**: Airspace volumes, borders, and authority assignments
+- **Aerodrome**: Airports, runways, taxiways, aprons
+- **Navaid**: VOR, NDB, DME, TACAN, ILS, Marker beacons
+- **Route**: Airways, route segments, waypoints
+- **Procedure**: SIDs, STARs, instrument approaches
+
+For detailed parser documentation, see the [AIXM Parser Architecture](../AixmParser/architecture.md) and [TODO](../AixmParser/TODO.md) files.
+
 ## Prerequisites
 - Python 3.10+
-- Required pip packages: `fastapi`, `uvicorn`, `websockets`, `python-multipart`
+- Required pip packages: `fastapi`, `uvicorn`, `websockets`, `python-multipart`, `aiosqlite`
 
 ## How to Run the System
 
@@ -87,22 +107,24 @@ The network is intentionally designed so no node has a global macroscopic view (
 The DDFN system now requires API authentication for sensitive endpoints.
 
 ### Environment Variables
-- DDFN_API_KEY: Set this to configure a custom API key. If not set, a secure key is auto-generated on startup.
+- `DDFN_API_KEY`: Set this to configure a custom API key. If not set, a secure key is auto-generated on startup (a generic warning is logged; the key itself is never printed).
 
 ### Using Authentication
 Include the X-API-Key header in requests to protected endpoints:
-
-`ash
+```bash
 # Health check (no auth required)
 curl http://127.0.0.1:8001/health
 
 # Protected endpoint - requires API key
 curl -H "X-API-Key: your-api-key" http://127.0.0.1:8001/api/nodes
-``n
+```
 ### Protected Endpoints
 The following endpoints require authentication:
-- **Broker**: /api/nodes, /api/audit`n- **FMP Service**: All POST endpoints (/api/sectors/*, /api/config/*, /api/aixm/upload, /api/rad/toggle)
-- **Airport Service**: /api/aar/override`n- **Sim Manager**: /api/flights/inject`n
+- **Broker**: /api/nodes, /api/audit
+- **FMP Service**: All POST endpoints (/api/sectors/*, /api/config/*, /api/aixm/upload, /api/rad/toggle)
+- **Airport Service**: /api/aar/override
+- **Sim Manager**: /api/flights/inject
+
 ### Public Endpoints
 The following endpoints remain public:
 - All /health endpoints (for monitoring)
@@ -110,11 +132,22 @@ The following endpoints remain public:
 
 
 
+## Security & Data Integrity
+
+The DDFN v2 system enforces the following security and reliability guarantees:
+
+- **Input Sanitization**: All uploaded files (e.g., AIXM data) are sanitized. Filenames are stripped of path components and stored with UUID-based names to prevent path traversal attacks.
+- **Secret Management**: API keys and other secrets are never logged to standard output.
+- **Audit Logging**: All significant state changes are written to an append-only SQLite audit log (`logs/swim_audit.db`).
+- **Async Persistence**: The persistence layer uses `aiosqlite` with WAL mode enabled, ensuring non-blocking I/O across the event loop.
+- **Message Durability**: The network client buffers outbound messages during disconnections and flushes them automatically on reconnect.
+- **CTOT Integrity**: The CASA algorithm assigns CTOTs based on the computed `assigned_slot` time, ensuring correct behavior for in-flight aircraft.
+
 ## Environment Configuration
 
 The system can be configured via environment variables. Create a .env file or set variables directly:
 
-\\\ash
+\\\`ash
 # Broker configuration
 export DDFN_BROKER_HOST=127.0.0.1
 export DDFN_BROKER_PORT=8001
@@ -136,12 +169,12 @@ export DDFN_DATA_DIR=data
 ## Docker Deployment
 
 ### Building the Image
-\\\ash
+\\\`ash
 docker build -t ddfn-v2 .
 \\\
 
 ### Running with Docker Compose
-\\\ash
+\\\`ash
 # Start all services
 docker-compose up -d
 
@@ -153,7 +186,7 @@ docker-compose down
 \\\
 
 ### Individual Service Deployment
-\\\ash
+\\\`ash
 # Run broker only
 docker run -p 8001:8001 ddfn-v2 python -m ddfn_v2.core.broker
 

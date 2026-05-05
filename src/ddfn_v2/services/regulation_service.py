@@ -57,13 +57,15 @@ class RegulationService:
                 assigned_slot = max(eto, next_min_slot)
             
             delay = int((assigned_slot - eto).total_seconds() / 60)
-            ctot = flt.departure_time + dt.timedelta(minutes=delay)
+            # CTOT is the assigned slot time itself, not departure_time + delay
+            # This correctly handles flights already in progress
+            ctot = assigned_slot.isoformat()
             
             slots.append(SlotDetails(
                 flight_id=flt.flight_id,
                 origin=flt.origin,
                 etot=flt.departure_time.isoformat(),
-                ctot=ctot.isoformat(),
+                ctot=ctot,
                 delay=delay
             ))
             
