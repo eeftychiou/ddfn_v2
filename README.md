@@ -11,27 +11,27 @@ This system is a truly decentralized, drop-in replacement for traditional centra
 
 ## Screenshots
 
-Below are screenshots of the DDFN v2 web dashboards captured from a running local cluster.
+Below are screenshots of the DDFN v2 web dashboards captured from a running local cluster with **real AIXM airspace data** (BD_2025-09-30_400005921419525.xml) and **live injected traffic**.
 
 ### Broker Audit Dashboard
-The central SWIM broker exposes an audit dashboard at `http://127.0.0.1:8001`.
+The central SWIM broker exposes an audit dashboard at `http://127.0.0.1:8001`, showing all active nodes in the distributed network and a live stream of CAPACITY_STATE_BROADCAST and AIRSPACE_INVENTORY_UPDATE messages.
 
 ![Broker Dashboard](screenshots/broker_dashboard.png)
 
 ### Simulation Manager
-The Sim Manager provides a centralized testing interface at `http://127.0.0.1:8050`.
+The Sim Manager provides a centralized testing interface at `http://127.0.0.1:8050`. Here it tracks 14 injected flights (CYP101, DLH401, ELY301, AEE201, etc.) originating from real airports such as LCLK, LLBG, LGAV, LGIR, LCPH, LCRA, LGKO, LTAI, LGRP, and LGTS.
 
 ![Sim Manager](screenshots/sim_manager.png)
 
 ### FMP Node Dashboards
-Each FMP node serves its own isolated dashboard on a dedicated port.
+Each FMP node serves its own isolated dashboard on a dedicated port, configured from real AIXM FIR data.
 
-| Node | URL | Screenshot |
-|------|-----|------------|
-| FMP 8010 | `http://127.0.0.1:8010` | ![FMP 8010](screenshots/fmp_8010.png) |
-| FMP 8011 | `http://127.0.0.1:8011` | ![FMP 8011](screenshots/fmp_8011.png) |
-| FMP 8012 | `http://127.0.0.1:8012` | ![FMP 8012](screenshots/fmp_8012.png) |
-| FMP 8013 | `http://127.0.0.1:8013` | ![FMP 8013](screenshots/fmp_8013.png) |
+| Node | URL | FIR | Sectors | Screenshot |
+|------|-----|-----|---------|------------|
+| FMP 8010 | `http://127.0.0.1:8010` | LCCC (Cyprus) | 18 sectors including LCCC, LCCCNU, LCCCS2, LCCCE2, LCCCWL | ![FMP 8010](screenshots/fmp_8010.png) |
+| FMP 8011 | `http://127.0.0.1:8011` | LGGG (Greece) | 7 sectors including LGGG, LGGGKAV | ![FMP 8011](screenshots/fmp_8011.png) |
+| FMP 8012 | `http://127.0.0.1:8012` | LLLL (Israel) | 4 sectors including LLLL, LLLLN, LLLLS | ![FMP 8012](screenshots/fmp_8012.png) |
+| FMP 8013 | `http://127.0.0.1:8013` | HECC (Egypt) | 3 sectors including HECC | ![FMP 8013](screenshots/fmp_8013.png) |
 
 ## AIXM Parser Integration
 
@@ -109,12 +109,12 @@ This script launches all components as background jobs in the current terminal a
 
 ## FMP Dashboard Configuration
 Once an FMP node is running, access its isolated UI via browser:
-- **HECC (Cairo)**: `http://127.0.0.1:8010` (CONFIGURED)
-- **LGGG (Athens)**: `http://127.0.0.1:8011` (CONFIGURED)
-- **LCCC (Nicosia)**: `http://127.0.0.1:8012` (CONFIGURED)
-- **FMP Lab**: `http://127.0.0.1:8013` (UNCONFIGURED - for manual setup practice)
+- **LCCC (Cyprus)**: `http://127.0.0.1:8010` (CONFIGURED — 18 sectors, airports LCLK, LCPH, LCRA)
+- **LGGG (Greece)**: `http://127.0.0.1:8011` (CONFIGURED — 7 sectors, airports LGIR, LGAV, LGTS, LGRP, LGKO)
+- **LLLL (Israel)**: `http://127.0.0.1:8012` (CONFIGURED — 4 sectors, airport LLBG)
+- **HECC (Egypt)**: `http://127.0.0.1:8013` (CONFIGURED — 3 sectors)
 
-**Note**: In the default demo (`start_demo.ps1`), three nodes are pre-configured using **reference-based JSON files** that re-resolve sector geometries from the high-fidelity AIXM source on startup. This ensures that the node's configuration is lightweight and always synchronized with the master airspace definition. For a technical breakdown of this architecture, see [Airspace Configuration Design Specification](file:///C:/Users/eftyc/Antigravity/ddfn_v2/design_airspace_config.md).
+All four nodes are pre-configured using **reference-based JSON files** that re-resolve sector geometries from the high-fidelity AIXM source on startup. This ensures that the node's configuration is lightweight and always synchronized with the master airspace definition. For a technical breakdown of this architecture, see [Airspace Configuration Design Specification](design_airspace_config.md).
 
 ## Global Network Overview
 The network is intentionally designed so no node has a global macroscopic view (to ensure true distribution). However, for analytical purposes, the central SWIM broker natively logs all pub/sub network activity into an immutable SQLite database located at `logs/swim_audit.db`. You can query this database to see exactly which nodes are publishing, subscribing, or negotiating slot constraints across the entire European mesh.

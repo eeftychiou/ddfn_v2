@@ -92,12 +92,12 @@ class FMPNode(DDFN_Node):
             try:
                 async with aiofiles.open(self.config_path, "r") as f:
                     content = await f.read()
-                    config = json.loads(content)
-                    self.aixm_source_file = config.get("aixm_source_file")
-                    self.aixm_source_fir = config.get("aixm_source_fir")
-                    self.active_config_name = config.get("config_name", "Default")
-                    self._measure_window_minutes = config.get("measure_window", config.FMP_DEFAULT_MEASURE_WINDOW)
-                    self.is_configured = config.get("is_configured", False)
+                    loaded_config = json.loads(content)
+                    self.aixm_source_file = loaded_config.get("aixm_source_file")
+                    self.aixm_source_fir = loaded_config.get("aixm_source_fir")
+                    self.active_config_name = loaded_config.get("config_name", "Default")
+                    self._measure_window_minutes = loaded_config.get("measure_window", config.FMP_DEFAULT_MEASURE_WINDOW)
+                    self.is_configured = loaded_config.get("is_configured", False)
                     
                     # 1. Trigger AIXM load if source is present
                     if self.aixm_source_file:
@@ -111,9 +111,9 @@ class FMPNode(DDFN_Node):
                     new_sectors = []
                     
                     # New Format: sector_configs (references)
-                    if "sector_configs" in config:
+                    if "sector_configs" in loaded_config:
                         from ddfn_v2.eng.airspace import SECTORS as GLOBAL_SECTORS
-                        for s_cfg in config["sector_configs"]:
+                        for s_cfg in loaded_config["sector_configs"]:
                             s_id = s_cfg["id"]
                             if s_id in GLOBAL_SECTORS:
                                 gs = GLOBAL_SECTORS[s_id]
@@ -131,8 +131,8 @@ class FMPNode(DDFN_Node):
                                 self.logger.warning(f"Sector reference {s_id} not found in AIXM registry.")
                                 
                     # New Format: airport_configs (references)
-                    if "airport_configs" in config:
-                        for a_cfg in config["airport_configs"]:
+                    if "airport_configs" in loaded_config:
+                        for a_cfg in loaded_config["airport_configs"]:
                             a_id = a_cfg["id"]
                             new_sectors.append(SectorCapacity(
                                 sector_id=a_id,
@@ -146,9 +146,9 @@ class FMPNode(DDFN_Node):
                             ))
                             
                     # Backward compatibility fallback: sectors (full objects)
-                    if not new_sectors and "sectors" in config:
+                    if not new_sectors and "sectors" in loaded_config:
                         self.logger.info("Loading legacy full-object sector definitions.")
-                        new_sectors = [from_dict(SectorCapacity, s) for s in config["sectors"]]
+                        new_sectors = [from_dict(SectorCapacity, s) for s in loaded_config["sectors"]]
                         
                     self.sectors = new_sectors
             except Exception as e:
@@ -273,11 +273,11 @@ class FMPNode(DDFN_Node):
             content = await f.read()
             saved = json.loads(content)
         if name in saved:
-            config = saved[name]
-            self.aixm_source_file = config.get("aixm_source_file")
-            self.aixm_source_fir = config.get("aixm_source_fir")
+            loaded_config = saved[name]
+            self.aixm_source_file = loaded_config.get("aixm_source_file")
+            self.aixm_source_fir = loaded_config.get("aixm_source_fir")
             self.active_config_name = name
-            self._measure_window_minutes = config.get("measure_window", config.FMP_DEFAULT_MEASURE_WINDOW)
+            self._measure_window_minutes = loaded_config.get("measure_window", config.FMP_DEFAULT_MEASURE_WINDOW)
             
             # Re-resolve based on the same logic as load_local_config
             if self.aixm_source_file:
@@ -288,9 +288,9 @@ class FMPNode(DDFN_Node):
                     self.logger.error(f"Failed to load AIXM registry from {self.aixm_source_file}: {e}")
 
             new_sectors = []
-            if "sector_configs" in config:
+            if "sector_configs" in loaded_config:
                 from ddfn_v2.eng.airspace import SECTORS as GLOBAL_SECTORS
-                for s_cfg in config["sector_configs"]:
+                for s_cfg in loaded_config["sector_configs"]:
                     s_id = s_cfg["id"]
                     if s_id in GLOBAL_SECTORS:
                         gs = GLOBAL_SECTORS[s_id]
@@ -305,8 +305,8 @@ class FMPNode(DDFN_Node):
                             polygon=gs.polygon
                         ))
             
-            if "airport_configs" in config:
-                for a_cfg in config["airport_configs"]:
+            if "airport_configs" in loaded_config:
+                for a_cfg in loaded_config["airport_configs"]:
                     a_id = a_cfg["id"]
                     new_sectors.append(SectorCapacity(
                         sector_id=a_id,
@@ -319,8 +319,8 @@ class FMPNode(DDFN_Node):
                         polygon=[(a_cfg["lat"], a_cfg["lon"])]
                     ))
 
-            if not new_sectors and "sectors" in config:
-                new_sectors = [from_dict(SectorCapacity, s) for s in config["sectors"]]
+            if not new_sectors and "sectors" in loaded_config:
+                new_sectors = [from_dict(SectorCapacity, s) for s in loaded_config["sectors"]]
                 
             self.sectors = new_sectors
             self.is_configured = len(self.sectors) > 0

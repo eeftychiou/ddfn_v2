@@ -1,6 +1,9 @@
+const API_KEY = localStorage.getItem('ddfn_api_key') || '';
+const HEADERS = API_KEY ? { 'X-API-Key': API_KEY } : {};
+
 async function fetchNodes() {
     try {
-        const res = await fetch('/api/nodes');
+        const res = await fetch('/api/nodes', { headers: HEADERS });
         const data = await res.json();
         
         const list = document.getElementById('connected-nodes-list');
@@ -20,7 +23,7 @@ async function fetchNodes() {
 
 async function fetchAudit() {
     try {
-        const res = await fetch('/api/audit');
+        const res = await fetch('/api/audit', { headers: HEADERS });
         const data = await res.json();
         
         const list = document.getElementById('audit-log-list');
