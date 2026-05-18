@@ -9,6 +9,30 @@ This system is a truly decentralized, drop-in replacement for traditional centra
 - **AOC Nodes (`aoc_service.py`)**: Airline Operations Centers. These track fleet schedules, negotiate slot swaps, and validate routes.
 - **Simulation Manager (`sim_manager.py`)**: A centralized testing interface to dynamically inject new flights and view the global simulation state.
 
+## Screenshots
+
+Below are screenshots of the DDFN v2 web dashboards captured from a running local cluster.
+
+### Broker Audit Dashboard
+The central SWIM broker exposes an audit dashboard at `http://127.0.0.1:8001`.
+
+![Broker Dashboard](screenshots/broker_dashboard.png)
+
+### Simulation Manager
+The Sim Manager provides a centralized testing interface at `http://127.0.0.1:8050`.
+
+![Sim Manager](screenshots/sim_manager.png)
+
+### FMP Node Dashboards
+Each FMP node serves its own isolated dashboard on a dedicated port.
+
+| Node | URL | Screenshot |
+|------|-----|------------|
+| FMP 8010 | `http://127.0.0.1:8010` | ![FMP 8010](screenshots/fmp_8010.png) |
+| FMP 8011 | `http://127.0.0.1:8011` | ![FMP 8011](screenshots/fmp_8011.png) |
+| FMP 8012 | `http://127.0.0.1:8012` | ![FMP 8012](screenshots/fmp_8012.png) |
+| FMP 8013 | `http://127.0.0.1:8013` | ![FMP 8013](screenshots/fmp_8013.png) |
+
 ## AIXM Parser Integration
 
 The DDFN v2 system integrates with the **AIXM Parser** library for parsing and visualizing aeronautical information exchange model (AIXM) 4.5 data. This enables:
