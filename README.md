@@ -13,17 +13,81 @@ This system is a truly decentralized, drop-in replacement for traditional centra
 
 Below are screenshots of the DDFN v2 web dashboards captured from a running local cluster with **real AIXM airspace data** (BD_2025-09-30_400005921419525.xml) and **live injected traffic**.
 
+### Airspace Visualization
+
+The FMP dashboards feature interactive **Leaflet maps** with real AIXM sector boundaries, airports, airways, and live flight tracking.
+
+#### LCCC FIR (Cyprus) – Sector Map Overview
+Interactive map showing LCCC FIR sector boundaries and active traffic injected via the Sim Manager.
+
+![LCCC Overview](screenshots/lccc_overview.png)
+
+#### LCCC FIR – Airspace Configuration
+The Airspace Config tab with sector selection, airport/airway layer toggles, and the configuration map.
+
+![LCCC Config](screenshots/lccc_config.png)
+
+#### LCCC FIR – Airspace & Slots
+Real-time airspace inventory table showing sector demand, capacity, and slot assignments.
+
+![LCCC Airspace](screenshots/lccc_airspace.png)
+
+#### LGGG FIR (Greece) – Sector Map with Active Flights
+LGGG FIR showing Greek airspace sectors with injected flights traversing the region.
+
+![LGGG Overview](screenshots/lggg_overview.png)
+
+#### LGGG FIR – Airspace Configuration
+Airspace configuration panel for the LGGG node with sector visualization.
+
+![LGGG Config](screenshots/lggg_config.png)
+
+#### LGGG FIR – Airspace & Slots
+Airspace inventory and slot management view for LGGG FIR.
+
+![LGGG Airspace](screenshots/lggg_airspace.png)
+
+#### LLLL FIR (Israel) – Sector Map
+LLLL FIR sector boundaries and active traffic visualization.
+
+![LLLL Overview](screenshots/llll_overview.png)
+
+#### LLLL FIR – Airspace Configuration
+Configuration panel with map visualization for Israeli airspace.
+
+![LLLL Config](screenshots/llll_config.png)
+
+#### LLLL FIR – Airspace & Slots
+Airspace inventory table showing sector status for LLLL FIR.
+
+![LLLL Airspace](screenshots/llll_airspace.png)
+
+#### HECC FIR (Egypt) – Sector Map
+HECC FIR showing Egyptian airspace sectors.
+
+![HECC Overview](screenshots/hecc_overview.png)
+
+#### HECC FIR – Airspace Configuration
+Configuration panel for HECC node with sector map.
+
+![HECC Config](screenshots/hecc_config.png)
+
+#### HECC FIR – Airspace & Slots
+Airspace inventory and slot view for HECC FIR.
+
+![HECC Airspace](screenshots/hecc_airspace.png)
+
 ### Broker Audit Dashboard
 The central SWIM broker exposes an audit dashboard at `http://127.0.0.1:8001`, showing all active nodes in the distributed network and a live stream of CAPACITY_STATE_BROADCAST and AIRSPACE_INVENTORY_UPDATE messages.
 
 ![Broker Dashboard](screenshots/broker_dashboard.png)
 
 ### Simulation Manager
-The Sim Manager provides a centralized testing interface at `http://127.0.0.1:8050`. Here it tracks 14 injected flights (CYP101, DLH401, ELY301, AEE201, etc.) originating from real airports such as LCLK, LLBG, LGAV, LGIR, LCPH, LCRA, LGKO, LTAI, LGRP, and LGTS.
+The Sim Manager provides a centralized testing interface at `http://127.0.0.1:8050`. Here it tracks injected flights (CYP001, CYP002, GRC001, ISR001, EGY001, etc.) originating from real airports such as LCLK, LCPH, LCRA, LGAV, LLBG, HECA.
 
 ![Sim Manager](screenshots/sim_manager.png)
 
-### FMP Node Dashboards
+### FMP Node Dashboards (Legacy Table View)
 Each FMP node serves its own isolated dashboard on a dedicated port, configured from real AIXM FIR data.
 
 | Node | URL | FIR | Sectors | Screenshot |
