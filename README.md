@@ -1,6 +1,6 @@
 # Distributed Demand & Capacity Balancing (DDFN) prototype v2
 
-This system is a truly decentralized, drop-in replacement for traditional centralized Air Traffic Flow Management (ATFM) systems (like the Eurocontrol NM). It utilizes a peer-to-peer pub/sub SWIM network to coordinate traffic flows, assign CASA delays, and renegotiate trajectories without any single node having global authority over the airspace.
+This is a research prototype exploring a decentralized alternative to traditional centralized Air Traffic Flow Management (ATFM) systems such as the EUROCONTROL Network Manager. It uses a peer-to-peer publish/subscribe SWIM-style network to coordinate traffic flows, assign CASA-style delays and renegotiate trajectories without any single node having global authority over the airspace. It is a personal research project, not an operational system.
 
 ## Architecture Overview
 - **Central SWIM Broker (`broker.py`)**: Acts purely as a passive message router for the distributed network and an Audit Logger. It holds no business logic or ATFM state.
